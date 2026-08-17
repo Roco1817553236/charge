@@ -1,9 +1,10 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia } from 'pinia'
+import { nextTick } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import App from '../src/App.vue'
 import type { Category, ConflictRecord, SyncMetadata, Transaction } from '../src/domain/models'
-import { setBookRepository, type BookRepository } from '../src/stores/bookStore'
+import { setBookRepository, useBookStore, type BookRepository } from '../src/stores/bookStore'
 
 const now = '2026-08-14T00:00:00.000Z'
 const category: Category = {
@@ -75,6 +76,60 @@ describe('App', () => {
     await flushPromises()
 
     expect(repo.resolveConflict).toHaveBeenCalledWith('conflict-1', 'remote')
+  })
+
+  it('lets a delete undo notification be dismissed without restoring the transaction', async () => {
+    const pinia = createPinia()
+    setBookRepository(repository())
+    const wrapper = mount(App, { global: { plugins: [pinia] } })
+    await flushPromises()
+    const store = useBookStore(pinia)
+    const undoDelete = vi.spyOn(store, 'undoDelete')
+
+    store.toast = { message: '流水已删除', action: 'undo-delete' }
+    await nextTick()
+
+    expect(wrapper.get('.toast-message').text()).toContain('撤销')
+    await wrapper.get('button[aria-label="关闭提示"]').trigger('click')
+    expect(wrapper.find('.toast-message').exists()).toBe(false)
+    expect(undoDelete).not.toHaveBeenCalled()
+  })
+
+  it('routes the delete undo action and shows the restored confirmation', async () => {
+    const pinia = createPinia()
+    const repo = repository()
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [pinia] } })
+    await flushPromises()
+    const store = useBookStore(pinia)
+
+    store.lastDeletedId = 'tx-1'
+    store.toast = { message: '流水已删除', action: 'undo-delete' }
+    await nextTick()
+
+    const undoButton = wrapper.get('.toast-message').findAll('button').find((button) => button.text() === '撤销')
+    expect(undoButton).toBeDefined()
+    await undoButton!.trigger('click')
+    await flushPromises()
+
+    expect(repo.restoreTransaction).toHaveBeenCalledWith('tx-1')
+    expect(wrapper.get('.toast-message').text()).toContain('已撤销删除')
+    expect(wrapper.get('button[aria-label="关闭提示"]').text()).toBe('×')
+  })
+
+  it('shows a close control beside the undo-save action', async () => {
+    const pinia = createPinia()
+    setBookRepository(repository())
+    const wrapper = mount(App, { global: { plugins: [pinia] } })
+    await flushPromises()
+    const store = useBookStore(pinia)
+
+    store.toast = { message: '本机已保存，可继续记账', action: 'undo-save' }
+    await nextTick()
+
+    const toast = wrapper.get('.toast-message')
+    expect(toast.text()).toContain('撤销')
+    expect(toast.get('button[aria-label="关闭提示"]').text()).toBe('×')
   })
 
   it('surfaces the independent migration rescue backup when initialization self-check fails', async () => {

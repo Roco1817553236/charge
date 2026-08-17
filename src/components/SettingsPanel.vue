@@ -239,9 +239,9 @@ function describeConflictValue(value: ConflictRecord['localValue']): string {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>Windows、Android 与浏览器的 OneDrive 端到端加密同步</li>
-          <li>月度环比、年度同比、分类统计与完整月份切换</li>
-          <li>可信设备密钥、云端快照恢复与数据库迁移备份</li>
+          <li>月度与年度统计聚焦支出去向，删除收支趋势与预测</li>
+          <li>大类和小类同屏展示金额与占比，无需进入后返回</li>
+          <li>保存与删除提示同时提供撤销和关闭按钮</li>
         </ul>
       </details>
     </section>

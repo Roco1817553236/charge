@@ -18,7 +18,7 @@ test('records a transaction and exposes it in the ledger and statistics', async 
 
   await page.getByTestId('nav-stats').click()
   const stats = page.locator('section[aria-labelledby="stats-title"]')
-  await expect(stats.getByRole('heading', { name: '统计' })).toBeVisible()
+  await expect(stats.getByRole('heading', { name: '支出去向' })).toBeVisible()
   await expect(stats.getByText('¥18.80').first()).toBeVisible()
 })
 

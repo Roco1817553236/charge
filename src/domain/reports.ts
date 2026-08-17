@@ -21,6 +21,27 @@ export interface CategoryTotal {
   percentage: number
 }
 
+export type ExpenseSubcategoryTotal = CategoryTotal
+
+export interface ExpenseCategoryTotal extends CategoryTotal {
+  subcategoryBreakdown: ExpenseSubcategoryTotal[]
+}
+
+export interface ExpensePeriodReport {
+  expenseMinor: number
+  count: number
+  categoryBreakdown: ExpenseCategoryTotal[]
+}
+
+export interface ExpensePeriodComparison {
+  current: ExpensePeriodReport
+  previous: ExpensePeriodReport
+  expenseChangeMinor: number
+  expenseChangeRate: number | null
+  currentLabel: string
+  previousLabel: string
+}
+
 export interface MonthlyReport extends PeriodTotals {
   yearMonth: string
   days: DailyTotal[]
@@ -93,6 +114,76 @@ function resolvedRootId(transaction: Transaction, categoryMap: Map<string, Categ
   return transaction.categoryId
 }
 
+function buildExpenseReportBetween(
+  transactions: Transaction[],
+  categories: Category[],
+  startDate: string,
+  endDate: string,
+): ExpensePeriodReport {
+  const categoryMap = new Map(
+    categories.filter((category) => !category.deletedAt).map((category) => [category.id, category]),
+  )
+  const rows = activeTransactions(transactions).filter(
+    (transaction) => transaction.type === 'expense' && inRange(transaction.occurredLocalDate, startDate, endDate),
+  )
+  const rootAmounts = new Map<string, number>()
+  const childAmounts = new Map<string, Map<string, { name: string; color: string; expenseMinor: number }>>()
+
+  rows.forEach((transaction) => {
+    const selectedChild = transaction.subcategoryId ? categoryMap.get(transaction.subcategoryId) : undefined
+    const hasCurrentParent = Boolean(selectedChild?.parentId)
+    const rootId = hasCurrentParent ? selectedChild!.parentId! : transaction.categoryId
+    const root = categoryMap.get(rootId)
+    const childId = hasCurrentParent
+      ? selectedChild!.id
+      : transaction.subcategoryId
+        ? `__missing__:${transaction.subcategoryId}`
+        : `__unclassified__:${rootId}`
+    const childName = hasCurrentParent
+      ? selectedChild!.name
+      : transaction.subcategoryId ? '已删除小类' : '未细分类'
+    const childColor = hasCurrentParent
+      ? selectedChild!.color
+      : transaction.subcategoryId ? '#94A3B8' : root?.color ?? '#94A3B8'
+
+    rootAmounts.set(rootId, (rootAmounts.get(rootId) ?? 0) + transaction.amountMinor)
+    const children = childAmounts.get(rootId) ?? new Map()
+    const currentChild = children.get(childId)
+    children.set(childId, {
+      name: currentChild?.name ?? childName,
+      color: currentChild?.color ?? childColor,
+      expenseMinor: (currentChild?.expenseMinor ?? 0) + transaction.amountMinor,
+    })
+    childAmounts.set(rootId, children)
+  })
+
+  const expenseMinor = rows.reduce((sum, transaction) => sum + transaction.amountMinor, 0)
+  const categoryBreakdown = [...rootAmounts.entries()]
+    .map(([categoryId, rootExpenseMinor]) => {
+      const root = categoryMap.get(categoryId)
+      const subcategoryBreakdown = [...(childAmounts.get(categoryId)?.entries() ?? [])]
+        .map(([childId, child]) => ({
+          categoryId: childId,
+          name: child.name,
+          color: child.color,
+          expenseMinor: child.expenseMinor,
+          percentage: rootExpenseMinor === 0 ? 0 : child.expenseMinor / rootExpenseMinor,
+        }))
+        .sort((left, right) => right.expenseMinor - left.expenseMinor)
+      return {
+        categoryId,
+        name: root?.name ?? '已删除分类',
+        color: root?.color ?? '#94A3B8',
+        expenseMinor: rootExpenseMinor,
+        percentage: expenseMinor === 0 ? 0 : rootExpenseMinor / expenseMinor,
+        subcategoryBreakdown,
+      }
+    })
+    .sort((left, right) => right.expenseMinor - left.expenseMinor)
+
+  return { expenseMinor, count: rows.length, categoryBreakdown }
+}
+
 function buildMonthlyReportBetween(
   transactions: Transaction[],
   categories: Category[],
@@ -159,6 +250,88 @@ function previousMonth(yearMonth: string): string {
 function changeRate(current: number, previous: number): number | null {
   if (previous === 0) return null
   return Math.round(((current - previous) / previous) * 10_000) / 10_000
+}
+
+function expenseComparison(
+  current: ExpensePeriodReport,
+  previous: ExpensePeriodReport,
+  currentLabel: string,
+  previousLabel: string,
+): ExpensePeriodComparison {
+  return {
+    current,
+    previous,
+    expenseChangeMinor: current.expenseMinor - previous.expenseMinor,
+    expenseChangeRate: changeRate(current.expenseMinor, previous.expenseMinor),
+    currentLabel,
+    previousLabel,
+  }
+}
+
+export function compareExpenseMonthPeriods(
+  transactions: Transaction[],
+  categories: Category[],
+  yearMonth: string,
+  asOfDate: string,
+  mode: 'to-date' | 'full-month',
+): ExpensePeriodComparison {
+  const previousYearMonth = previousMonth(yearMonth)
+  const [currentYear, currentMonth] = yearMonth.split('-').map(Number)
+  const [previousYear, previousMonthNumber] = previousYearMonth.split('-').map(Number)
+  const requestedDay = Number(asOfDate.slice(-2))
+  const currentCutoff = mode === 'to-date'
+    ? Math.min(requestedDay, daysInMonth(currentYear!, currentMonth!))
+    : daysInMonth(currentYear!, currentMonth!)
+  const previousCutoff = mode === 'to-date'
+    ? Math.min(requestedDay, daysInMonth(previousYear!, previousMonthNumber!))
+    : daysInMonth(previousYear!, previousMonthNumber!)
+  const current = buildExpenseReportBetween(
+    transactions,
+    categories,
+    `${yearMonth}-01`,
+    `${yearMonth}-${String(currentCutoff).padStart(2, '0')}`,
+  )
+  const previous = buildExpenseReportBetween(
+    transactions,
+    categories,
+    `${previousYearMonth}-01`,
+    `${previousYearMonth}-${String(previousCutoff).padStart(2, '0')}`,
+  )
+  return expenseComparison(
+    current,
+    previous,
+    mode === 'to-date' ? '本月至今' : '本月完整数据',
+    mode === 'to-date' ? '上月同期' : '上月完整数据',
+  )
+}
+
+export function compareExpenseYearPeriods(
+  transactions: Transaction[],
+  categories: Category[],
+  year: number,
+  asOfDate: string,
+): ExpensePeriodComparison {
+  const asOfYear = Number(asOfDate.slice(0, 4))
+  const isCurrentYear = year === asOfYear
+  const monthDay = asOfDate.slice(5)
+  const current = buildExpenseReportBetween(
+    transactions,
+    categories,
+    `${year}-01-01`,
+    isCurrentYear ? `${year}-${monthDay}` : `${year}-12-31`,
+  )
+  const previous = buildExpenseReportBetween(
+    transactions,
+    categories,
+    `${year - 1}-01-01`,
+    isCurrentYear ? `${year - 1}-${monthDay}` : `${year - 1}-12-31`,
+  )
+  return expenseComparison(
+    current,
+    previous,
+    isCurrentYear ? `${year} 年至今` : `${year} 年`,
+    isCurrentYear ? `${year - 1} 年同期` : `${year - 1} 年`,
+  )
 }
 
 export function compareMonthPeriods(

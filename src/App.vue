@@ -32,7 +32,7 @@ const categoryManagerOpen = ref(false)
 const settingsOpen = ref(false)
 const updateController = new PwaUpdateController()
 const updateState = updateController.state
-const appVersion = import.meta.env.VITE_APP_VERSION || '1.0.0'
+const appVersion = import.meta.env.VITE_APP_VERSION || '1.1.0'
 let stopBackgroundSync: (() => void) | null = null
 let dateRefreshTimer: number | null = null
 
@@ -332,7 +332,7 @@ function syncStatusLabel(): string {
           <span>{{ toast.message }}</span>
           <button v-if="toast.action === 'undo-delete'" type="button" @click="store.undoDelete">撤销</button>
           <button v-else-if="toast.action === 'undo-save'" type="button" @click="store.undoLastSave">撤销</button>
-          <button v-else type="button" aria-label="关闭提示" @click="store.clearToast">×</button>
+          <button type="button" aria-label="关闭提示" @click="store.clearToast">×</button>
         </div>
       </Transition>
 
