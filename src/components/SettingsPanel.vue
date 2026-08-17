@@ -239,9 +239,9 @@ function describeConflictValue(value: ConflictRecord['localValue']): string {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>月度与年度统计聚焦支出去向，删除收支趋势与预测</li>
-          <li>大类和小类同屏展示金额与占比，无需进入后返回</li>
-          <li>保存与删除提示同时提供撤销和关闭按钮</li>
+          <li>同一大类下的小类环形图改用不同颜色，扇区占比更直观</li>
+          <li>同一个小类跨月份和金额排名变化时保持相同图表颜色</li>
+          <li>配色仅用于统计展示，不修改分类颜色和已有账本数据</li>
         </ul>
       </details>
     </section>

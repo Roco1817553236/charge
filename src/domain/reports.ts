@@ -42,6 +42,50 @@ export interface ExpensePeriodComparison {
   previousLabel: string
 }
 
+const SUBCATEGORY_CHART_PALETTE = [
+  '#2563EB',
+  '#F97316',
+  '#16A34A',
+  '#DC2626',
+  '#7C3AED',
+  '#0891B2',
+  '#DB2777',
+  '#CA8A04',
+  '#4F46E5',
+  '#059669',
+  '#EA580C',
+  '#9333EA',
+] as const
+
+const UNCLASSIFIED_CHART_COLOR = '#64748B'
+const MISSING_SUBCATEGORY_CHART_COLOR = '#94A3B8'
+
+function subcategoryChartColor(index: number): string {
+  if (index < SUBCATEGORY_CHART_PALETTE.length) return SUBCATEGORY_CHART_PALETTE[index]!
+  const generatedIndex = index - SUBCATEGORY_CHART_PALETTE.length
+  const hue = (17 + generatedIndex * 137.508) % 360
+  const lightness = 44 + (Math.floor(generatedIndex / SUBCATEGORY_CHART_PALETTE.length) % 2) * 14
+  return `hsl(${hue.toFixed(3)} 72% ${lightness}%)`
+}
+
+function buildSubcategoryChartColors(categories: Category[]): Map<string, string> {
+  const siblingsByRoot = new Map<string, Category[]>()
+  categories.forEach((category) => {
+    if (category.deletedAt || category.parentId === null) return
+    const siblings = siblingsByRoot.get(category.parentId) ?? []
+    siblings.push(category)
+    siblingsByRoot.set(category.parentId, siblings)
+  })
+
+  const colors = new Map<string, string>()
+  siblingsByRoot.forEach((siblings) => {
+    siblings
+      .sort((left, right) => left.sortOrder - right.sortOrder || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+      .forEach((category, index) => colors.set(category.id, subcategoryChartColor(index)))
+  })
+  return colors
+}
+
 export interface MonthlyReport extends PeriodTotals {
   yearMonth: string
   days: DailyTotal[]
@@ -123,6 +167,7 @@ function buildExpenseReportBetween(
   const categoryMap = new Map(
     categories.filter((category) => !category.deletedAt).map((category) => [category.id, category]),
   )
+  const subcategoryChartColors = buildSubcategoryChartColors(categories)
   const rows = activeTransactions(transactions).filter(
     (transaction) => transaction.type === 'expense' && inRange(transaction.occurredLocalDate, startDate, endDate),
   )
@@ -143,8 +188,8 @@ function buildExpenseReportBetween(
       ? selectedChild!.name
       : transaction.subcategoryId ? '已删除小类' : '未细分类'
     const childColor = hasCurrentParent
-      ? selectedChild!.color
-      : transaction.subcategoryId ? '#94A3B8' : root?.color ?? '#94A3B8'
+      ? subcategoryChartColors.get(selectedChild!.id) ?? MISSING_SUBCATEGORY_CHART_COLOR
+      : transaction.subcategoryId ? MISSING_SUBCATEGORY_CHART_COLOR : UNCLASSIFIED_CHART_COLOR
 
     rootAmounts.set(rootId, (rootAmounts.get(rootId) ?? 0) + transaction.amountMinor)
     const children = childAmounts.get(rootId) ?? new Map()

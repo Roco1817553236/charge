@@ -131,6 +131,88 @@ describe('expense-focused breakdown reports', () => {
     transaction('previous-year-december', '2025-12-01', 7000, 'expense', { categoryId: 'transport' }),
     transaction('two-years-ago', '2024-01-01', 2000),
   ]
+  const sameColorCategories: Category[] = [
+    ...categories,
+    {
+      id: 'breakfast', type: 'expense', parentId: 'food', name: '早餐', icon: '🥣', color: '#f97316', sortOrder: 0,
+      isPinned: false, status: 'active', revision, createdAt: now, updatedAt: now,
+    },
+    {
+      id: 'snack', type: 'expense', parentId: 'food', name: '零食', icon: '🍪', color: '#f97316', sortOrder: 1,
+      isPinned: false, status: 'active', revision, createdAt: now, updatedAt: now,
+    },
+  ]
+
+  it('assigns distinct chart colors to siblings that store the same category color', () => {
+    const report = compareExpenseMonthPeriods(
+      [
+        transaction('breakfast-current', '2026-08-10', 2000, 'expense', { subcategoryId: 'breakfast' }),
+        transaction('snack-current', '2026-08-11', 1000, 'expense', { subcategoryId: 'snack' }),
+      ],
+      sameColorCategories,
+      '2026-08',
+      '2026-08-14',
+      'to-date',
+    )
+
+    const children = report.current.categoryBreakdown[0]!.subcategoryBreakdown
+    expect(children).toHaveLength(2)
+    expect(children[0]!.color).not.toBe(children[1]!.color)
+  })
+
+  it('keeps each subcategory chart color stable when amount ranking changes', () => {
+    const report = compareExpenseMonthPeriods(
+      [
+        transaction('breakfast-current', '2026-08-10', 2000, 'expense', { subcategoryId: 'breakfast' }),
+        transaction('snack-current', '2026-08-11', 1000, 'expense', { subcategoryId: 'snack' }),
+        transaction('breakfast-previous', '2026-07-10', 500, 'expense', { subcategoryId: 'breakfast' }),
+        transaction('snack-previous', '2026-07-11', 3000, 'expense', { subcategoryId: 'snack' }),
+      ],
+      sameColorCategories,
+      '2026-08',
+      '2026-08-14',
+      'to-date',
+    )
+
+    const currentColors = new Map(report.current.categoryBreakdown[0]!.subcategoryBreakdown.map((row) => [row.categoryId, row.color]))
+    const previousColors = new Map(report.previous.categoryBreakdown[0]!.subcategoryBreakdown.map((row) => [row.categoryId, row.color]))
+    expect(currentColors.get('breakfast')).toBe(previousColors.get('breakfast'))
+    expect(currentColors.get('snack')).toBe(previousColors.get('snack'))
+  })
+
+  it('continues generating distinct colors after the fixed chart palette is exhausted', () => {
+    const manyChildren: Category[] = Array.from({ length: 266 }, (_, index) => ({
+      id: `custom-child-${String(index).padStart(2, '0')}`,
+      type: 'expense' as const,
+      parentId: 'food',
+      name: `自定义小类 ${index + 1}`,
+      icon: '●',
+      color: '#f97316',
+      sortOrder: index,
+      isPinned: false,
+      status: 'active' as const,
+      revision,
+      createdAt: now,
+      updatedAt: now,
+    }))
+    const report = compareExpenseMonthPeriods(
+      manyChildren.map((child, index) => transaction(
+        `custom-expense-${index}`,
+        '2026-08-10',
+        100 + index,
+        'expense',
+        { subcategoryId: child.id },
+      )),
+      [...categories, ...manyChildren],
+      '2026-08',
+      '2026-08-14',
+      'to-date',
+    )
+
+    const colors = report.current.categoryBreakdown[0]!.subcategoryBreakdown.map((row) => row.color)
+    expect(new Set(colors).size).toBe(266)
+    expect(colors.some((color) => color.startsWith('hsl('))).toBe(true)
+  })
 
   it('builds a monthly expense-only hierarchy whose child totals reconcile with each root', () => {
     const report = compareExpenseMonthPeriods(
@@ -184,6 +266,28 @@ describe('expense-focused breakdown reports', () => {
     expect(report.current.categoryBreakdown[0]?.subcategoryBreakdown).toEqual([
       expect.objectContaining({ name: '已删除小类', color: '#94A3B8', expenseMinor: 800 }),
     ])
+  })
+
+  it('uses different fixed neutral colors for unclassified and deleted subcategories', () => {
+    const deletedChild: Category = {
+      id: 'deleted-snack', type: 'expense', parentId: 'food', name: '旧零食', icon: '🍪', color: '#dc2626',
+      sortOrder: 1, isPinned: false, status: 'archived', revision, createdAt: now, updatedAt: now,
+      deletedAt: now, deleteRevision: revision,
+    }
+    const report = compareExpenseMonthPeriods(
+      [
+        transaction('unclassified-expense', '2026-08-10', 200, 'expense'),
+        transaction('deleted-child-expense', '2026-08-11', 800, 'expense', { subcategoryId: deletedChild.id }),
+      ],
+      [...expenseCategories, deletedChild],
+      '2026-08',
+      '2026-08-14',
+      'to-date',
+    )
+
+    const children = report.current.categoryBreakdown[0]!.subcategoryBreakdown
+    expect(children.find((row) => row.name === '未细分类')?.color).toBe('#64748B')
+    expect(children.find((row) => row.name === '已删除小类')?.color).toBe('#94A3B8')
   })
 
   it('uses year-to-date for the current year and complete years for historical selections', () => {
