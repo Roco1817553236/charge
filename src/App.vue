@@ -8,32 +8,27 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import StatsPage from './components/StatsPage.vue'
 import SwipePager from './components/SwipePager.vue'
 import type { SaveCategoryInput } from './data/localRepository'
-import type { Category, ConflictRecord, Transaction } from './domain/models'
+import type { Category, Transaction } from './domain/models'
 import {
   exportEncryptedBackup,
-  exportLedgerCsv,
   exportPlainJson,
   importEncryptedBackup,
   MAX_BACKUP_FILE_BYTES,
   parsePlainJson,
 } from './services/importExport'
-import { startBackgroundSync } from './services/backgroundSync'
 import { PwaUpdateController } from './services/pwaUpdate'
 import { useBookStore, type EntryDraft } from './stores/bookStore'
 
 const store = useBookStore()
 const {
-  categories, transactions, draft, pageIndex, loading, saving, toast, error, syncMetadata,
-  syncing, syncClientId, newRecoveryKey, conflicts,
-  cloudSnapshots, loadingCloudSnapshots, monthComparisonMode,
-  migrationRecoveryAvailable,
+  categories, transactions, draft, pageIndex, loading, saving, toast, error,
+  monthComparisonMode, migrationRecoveryAvailable,
 } = storeToRefs(store)
 const categoryManagerOpen = ref(false)
 const settingsOpen = ref(false)
 const updateController = new PwaUpdateController()
 const updateState = updateController.state
-const appVersion = import.meta.env.VITE_APP_VERSION || '1.2.0'
-let stopBackgroundSync: (() => void) | null = null
+const appVersion = import.meta.env.VITE_APP_VERSION || '1.3.0'
 let dateRefreshTimer: number | null = null
 
 function localToday(): string {
@@ -57,7 +52,6 @@ onMounted(async () => {
   try {
     await store.initialize()
     scheduleDateRefresh()
-    stopBackgroundSync = startBackgroundSync(() => store.backgroundSync())
     if (import.meta.env.PROD && 'serviceWorker' in navigator) await updateController.initialize()
   } catch {
     // The store exposes a user-safe error state and the app keeps the recovery screen mounted.
@@ -65,7 +59,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  stopBackgroundSync?.()
   if (dateRefreshTimer !== null) window.clearTimeout(dateRefreshTimer)
 })
 
@@ -75,18 +68,6 @@ async function saveDraft(value: EntryDraft): Promise<void> {
     await store.saveEntry()
   } catch {
     // Error is displayed next to the app shell.
-  }
-}
-
-async function syncOneDrive(request: {
-  clientId: string
-  method: { password: string } | { recoveryKey: string }
-  rememberDevice: boolean
-}): Promise<void> {
-  try {
-    await store.syncOneDrive(request.clientId, request.method, request.rememberDevice)
-  } catch {
-    // Store presents a safe error without exposing tokens or ledger contents.
   }
 }
 
@@ -112,11 +93,6 @@ async function exportEncrypted(password: string): Promise<void> {
   } catch (caught) {
     store.error = caught instanceof Error ? caught.message : '加密备份生成失败'
   }
-}
-
-async function exportCsv(): Promise<void> {
-  downloadText(backupFilename('csv'), exportLedgerCsv(await store.createSnapshot()), 'text/csv;charset=utf-8')
-  store.toast = { message: 'CSV 已下载；该文件是明文，请妥善保管' }
 }
 
 async function exportPlain(): Promise<void> {
@@ -149,8 +125,8 @@ async function importBackup(file: File, method: { password: string } | { recover
   }
 }
 
-function downloadRecovery(key: string, filename = '账页-OneDrive-恢复密钥.txt'): void {
-  downloadText(filename, `账页恢复密钥\n\n${key}\n\n请离线妥善保存。忘记同步密码且丢失此密钥后，密文无法恢复。\n`, 'text/plain;charset=utf-8')
+function downloadRecovery(key: string, filename = '账页备份恢复密钥.txt'): void {
+  downloadText(filename, `账页备份恢复密钥\n\n${key}\n\n请离线妥善保存。忘记备份密码且丢失此密钥后，加密 JSON 无法恢复。\n`, 'text/plain;charset=utf-8')
 }
 
 async function saveCategory(
@@ -185,34 +161,6 @@ async function deleteTransaction(transaction: Transaction): Promise<void> {
   }
 }
 
-async function resolveConflict(conflict: ConflictRecord, choice: 'local' | 'remote'): Promise<void> {
-  try {
-    await store.resolveConflict(conflict, choice)
-  } catch (caught) {
-    store.error = caught instanceof Error ? caught.message : '同步冲突处理失败'
-  }
-}
-
-async function restoreCloudSnapshot(
-  snapshotId: string,
-  method: { password: string } | { recoveryKey: string } | null,
-): Promise<void> {
-  if (!window.confirm('恢复该云端快照会把它设为新的账本版本，并同步到其他设备。建议先导出当前备份。确定继续吗？')) return
-  try {
-    await store.restoreCloudSnapshot(snapshotId, method ?? undefined)
-  } catch {
-    // Store exposes a safe error and leaves the current ledger untouched.
-  }
-}
-
-async function refreshCloudSnapshots(): Promise<void> {
-  try {
-    await store.refreshCloudSnapshots()
-  } catch {
-    // Store exposes a safe error and keeps the settings panel usable.
-  }
-}
-
 function applyAvailableUpdate(): void {
   const hasUnsavedDraft = Boolean(
     draft.value.amount.trim() || draft.value.categoryId || draft.value.subcategoryId || draft.value.note.trim()
@@ -223,13 +171,6 @@ function applyAvailableUpdate(): void {
     return
   }
   updateController.applyUpdate()
-}
-
-function syncStatusLabel(): string {
-  if (syncMetadata.value.status === 'syncing') return '同步中'
-  if (syncMetadata.value.status === 'synced') return '已同步'
-  if (syncMetadata.value.status === 'attention') return '需要处理'
-  return syncMetadata.value.pending ? '待同步' : '本机账本'
 }
 </script>
 
@@ -242,8 +183,8 @@ function syncStatusLabel(): string {
     </div>
 
     <template v-else>
-      <button class="sync-status" type="button" :class="syncMetadata.status" title="同步与备份设置" @click="settingsOpen = true">
-        <i /><span>{{ syncStatusLabel() }}</span>
+      <button class="settings-button" type="button" aria-label="打开设置与备份" title="设置与备份" @click="settingsOpen = true">
+        <span aria-hidden="true">⚙</span>
       </button>
 
       <SwipePager v-model="pageIndex">
@@ -295,32 +236,18 @@ function syncStatusLabel(): string {
 
       <Transition name="drawer">
         <div v-if="settingsOpen" class="drawer-backdrop" @click.self="settingsOpen = false">
-          <aside class="drawer-panel" aria-label="设置与同步面板">
+          <aside class="drawer-panel" aria-label="设置与备份面板">
             <SettingsPanel
-              :sync-metadata="syncMetadata"
-              :initial-client-id="syncClientId"
               :app-version="appVersion"
-              :syncing="syncing"
               :update-available="updateState.updateAvailable"
               :offline-ready="updateState.offlineReady"
-              :new-recovery-key="newRecoveryKey"
-              :conflicts="conflicts"
-              :cloud-snapshots="cloudSnapshots"
-              :loading-cloud-snapshots="loadingCloudSnapshots"
               :migration-recovery-available="migrationRecoveryAvailable"
               @close="settingsOpen = false"
-              @sync="syncOneDrive"
               @export-encrypted="exportEncrypted"
-              @export-csv="exportCsv"
               @export-plain="exportPlain"
               @import-file="importBackup"
               @apply-update="applyAvailableUpdate"
               @check-update="updateController.checkForUpdate()"
-              @download-recovery="downloadRecovery"
-              @recovery-saved="store.confirmRecoveryKeySaved"
-              @resolve-conflict="resolveConflict"
-              @refresh-cloud-snapshots="refreshCloudSnapshots"
-              @restore-cloud-snapshot="restoreCloudSnapshot"
               @export-migration-recovery="exportMigrationRecovery"
             />
           </aside>
@@ -344,11 +271,11 @@ function syncStatusLabel(): string {
 <style scoped>
 .app-shell { min-height: 100dvh; background: var(--app-bg); }
 .loading-screen { display: grid; min-height: 100dvh; place-content: center; place-items: center; gap: 14px; color: var(--muted); }.brand-mark { display: grid; width: 64px; height: 64px; place-items: center; border-radius: 21px; background: var(--accent); color: white; font: 800 25px var(--font-display); box-shadow: 0 18px 45px color-mix(in srgb, var(--accent) 30%, transparent); }.loading-screen strong { color: var(--ink); font-size: 13px; }.loading-screen i { width: 34px; height: 3px; overflow: hidden; border-radius: 999px; background: var(--line); }.loading-screen i::after { display: block; width: 45%; height: 100%; border-radius: inherit; background: var(--accent); animation: loading 1s ease-in-out infinite alternate; content: ''; }
-.sync-status { position: fixed; z-index: 25; top: max(12px, env(safe-area-inset-top)); right: 14px; display: flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--surface) 86%, transparent); color: var(--muted); font-size: 10px; font-weight: 750; box-shadow: var(--shadow-soft); backdrop-filter: blur(12px); }.sync-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }.sync-status.synced i { background: var(--positive); }.sync-status.syncing i { background: var(--accent); animation: pulse 1s infinite; }.sync-status.attention i { background: var(--danger); }
+.settings-button { position: fixed; z-index: 25; top: max(12px, env(safe-area-inset-top)); right: 14px; display: grid; width: 38px; height: 38px; place-items: center; border: 1px solid var(--line); border-radius: 13px; background: color-mix(in srgb, var(--surface) 86%, transparent); color: var(--muted-strong); box-shadow: var(--shadow-soft); backdrop-filter: blur(12px); }.settings-button span { font-size: 17px; line-height: 1; }
 .drawer-backdrop { position: fixed; z-index: 45; inset: 0; display: flex; justify-content: end; background: rgb(15 23 42 / 34%); backdrop-filter: blur(4px); }.drawer-panel { width: min(100%, 520px); height: 100%; overflow-y: auto; background: var(--app-bg); box-shadow: -24px 0 70px rgb(15 23 42 / 18%); }
 .toast-message { position: fixed; z-index: 70; right: 16px; bottom: calc(max(82px, env(safe-area-inset-bottom) + 82px)); left: 16px; display: flex; max-width: 440px; align-items: center; justify-content: space-between; gap: 12px; margin: auto; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); border-radius: 15px; background: color-mix(in srgb, var(--ink) 94%, transparent); color: var(--surface); box-shadow: 0 18px 45px rgb(15 23 42 / 24%); font-size: 12px; font-weight: 650; backdrop-filter: blur(10px); }.toast-message button { border: 0; background: transparent; color: #C7D2FE; font-weight: 800; }
 .error-banner { position: fixed; z-index: 65; top: 60px; right: 16px; left: 16px; display: flex; max-width: 520px; align-items: center; gap: 8px; margin: auto; padding: 11px 13px; border: 1px solid #FECACA; border-radius: 13px; background: #FEF2F2; color: #991B1B; font-size: 11px; box-shadow: var(--shadow-soft); }.error-banner span { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; background: #DC2626; color: white; font-weight: 800; }
 .drawer-enter-active, .drawer-leave-active { transition: opacity .22s ease; }.drawer-enter-active .drawer-panel, .drawer-leave-active .drawer-panel { transition: transform .28s cubic-bezier(.22,.75,.24,1); }.drawer-enter-from, .drawer-leave-to { opacity: 0; }.drawer-enter-from .drawer-panel, .drawer-leave-to .drawer-panel { transform: translateX(100%); }
 .toast-enter-active, .toast-leave-active { transition: .2s ease; }.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(10px); }
-@keyframes loading { to { transform: translateX(120%); } } @keyframes pulse { 50% { opacity: .35; transform: scale(.75); } }
+@keyframes loading { to { transform: translateX(120%); } }
 </style>

@@ -32,10 +32,6 @@ interface CreateVaultOptions {
 
 export type UnlockMethod = { password: string; recoveryKey?: never } | { recoveryKey: string; password?: never }
 
-export interface VaultUnlockSession {
-  key: CryptoKey
-}
-
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const blockAad = encoder.encode('personal-bookkeeping:vault-v1')
@@ -127,20 +123,6 @@ export function validateEncryptedVaultEnvelope(value: unknown): asserts value is
   validateCipherBlock(value.payload, undefined, MAX_VAULT_PAYLOAD_BYTES + 16)
 }
 
-export async function vaultRecoveryFingerprint(envelope: EncryptedVaultEnvelope): Promise<string> {
-  validateEncryptedVaultEnvelope(envelope)
-  const canonical = JSON.stringify({
-    version: envelope.version,
-    algorithm: envelope.algorithm,
-    recovery: {
-      iv: envelope.wrappedKeys.recovery.iv,
-      ciphertext: envelope.wrappedKeys.recovery.ciphertext,
-    },
-  })
-  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(canonical))
-  return toBase64Url(new Uint8Array(digest))
-}
-
 function randomBytes(length: number): Uint8Array<ArrayBuffer> {
   return crypto.getRandomValues(new Uint8Array(length))
 }
@@ -189,10 +171,8 @@ export async function createEncryptedVault<T>(
 ): Promise<{
   envelope: EncryptedVaultEnvelope
   recoveryKey: string
-  recoveryFingerprint: string
-  session: VaultUnlockSession
 }> {
-  if ([...password].length < 10) throw new Error('同步密码至少需要 10 个字符')
+  if ([...password].length < 10) throw new Error('备份密码至少需要 10 个字符')
   const iterations = options.iterations ?? DEFAULT_PBKDF2_ITERATIONS
   if (!Number.isSafeInteger(iterations) || iterations < 1_000 || iterations > MAX_PBKDF2_ITERATIONS) {
     throw new Error('KDF 参数无效')
@@ -231,51 +211,24 @@ export async function createEncryptedVault<T>(
     payload: encryptedPayload,
   }
   return {
-    session: { key: dataKey },
     envelope,
     recoveryKey: toBase64Url(recoveryKeyBytes),
-    recoveryFingerprint: await vaultRecoveryFingerprint(envelope),
   }
 }
 
 export async function decryptVault<T>(envelope: EncryptedVaultEnvelope, method: UnlockMethod): Promise<T> {
-  return (await openEncryptedVault<T>(envelope, method)).payload
-}
-
-export async function openEncryptedVault<T>(
-  envelope: EncryptedVaultEnvelope,
-  method: UnlockMethod,
-): Promise<{ payload: T; session: VaultUnlockSession }> {
   try {
-    const dataKey = await unlockDataKey(envelope, method, ['encrypt', 'decrypt'])
+    const dataKey = await unlockDataKey(envelope, method)
     const plaintext = await decryptBlock(envelope.payload, dataKey, payloadAad(envelope.wrappedKeys.recovery))
-    return { payload: JSON.parse(decoder.decode(plaintext)) as T, session: { key: dataKey } }
-  } catch {
-    throw new Error('无法解锁加密账本，请检查密码、恢复密钥或文件完整性')
-  }
-}
-
-export async function decryptVaultWithSession<T>(
-  envelope: EncryptedVaultEnvelope,
-  session: VaultUnlockSession,
-): Promise<T> {
-  try {
-    validateEncryptedVaultEnvelope(envelope)
-    const plaintext = await decryptBlock(
-      envelope.payload,
-      session.key,
-      payloadAad(envelope.wrappedKeys.recovery),
-    )
     return JSON.parse(decoder.decode(plaintext)) as T
   } catch {
-    throw new Error('可信设备密钥已失效，请重新输入同步密码或恢复密钥')
+    throw new Error('无法解锁加密备份，请检查密码、恢复密钥或文件完整性')
   }
 }
 
 async function unlockDataKey(
   envelope: EncryptedVaultEnvelope,
   method: UnlockMethod,
-  usages: KeyUsage[],
 ): Promise<CryptoKey> {
   validateEncryptedVaultEnvelope(envelope)
   let wrappingKey: CryptoKey
@@ -290,41 +243,5 @@ async function unlockDataKey(
     throw new Error('No unlock method')
   }
   const rawDataKey = await decryptBlock(wrappedDataKey, wrappingKey)
-  return importAesKey(rawDataKey, usages)
-}
-
-export async function updateEncryptedVault<T>(
-  envelope: EncryptedVaultEnvelope,
-  method: UnlockMethod,
-  payload: T,
-  now = new Date().toISOString(),
-): Promise<EncryptedVaultEnvelope> {
-  try {
-    const dataKey = await unlockDataKey(envelope, method, ['encrypt', 'decrypt'])
-    return updateEncryptedVaultWithSession(envelope, { key: dataKey }, payload, now)
-  } catch {
-    throw new Error('无法解锁加密账本，请检查密码、恢复密钥或文件完整性')
-  }
-}
-
-export async function updateEncryptedVaultWithSession<T>(
-  envelope: EncryptedVaultEnvelope,
-  session: VaultUnlockSession,
-  payload: T,
-  now = new Date().toISOString(),
-): Promise<EncryptedVaultEnvelope> {
-  try {
-    validateEncryptedVaultEnvelope(envelope)
-    return {
-      ...envelope,
-      updatedAt: now,
-      payload: await encryptBlock(
-        encoder.encode(JSON.stringify(payload)),
-        session.key,
-        payloadAad(envelope.wrappedKeys.recovery),
-      ),
-    }
-  } catch {
-    throw new Error('可信设备密钥已失效，请重新输入同步密码或恢复密钥')
-  }
+  return importAesKey(rawDataKey, ['decrypt'])
 }

@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-08-17T10:20:30.000Z",
+  "transactions": [
+    {
+      "id": "legacy-tx-lunch",
+      "type": "expense",
+      "amountMinor": 4280,
+      "currency": "CNY",
+      "categoryId": "legacy-food",
+      "subcategoryId": "legacy-chinese-food",
+      "occurredLocalDate": "2026-08-17",
+      "occurredLocalTime": "12:18",
+      "timeZone": "Asia/Shanghai",
+      "note": "v1.2 中餐午饭",
+      "createdAt": "2026-08-17T04:18:00.000Z",
+      "updatedAt": "2026-08-17T04:20:00.000Z",
+      "revision": {
+        "counter": 9,
+        "deviceId": "legacy-phone",
+        "clock": {
+          "legacy-phone": 9,
+          "legacy-pc": 6
+        }
+      }
+    }
+  ],
+  "categories": [
+    {
+      "id": "legacy-food",
+      "type": "expense",
+      "parentId": null,
+      "name": "餐饮",
+      "icon": "🍜",
+      "color": "#F97316",
+      "sortOrder": 0,
+      "isPinned": true,
+      "status": "active",
+      "revision": {
+        "counter": 2,
+        "deviceId": "legacy-phone",
+        "clock": {
+          "legacy-phone": 2
+        }
+      },
+      "createdAt": "2026-08-14T00:00:00.000Z",
+      "updatedAt": "2026-08-14T00:00:00.000Z",
+      "isSystemDefault": true
+    },
+    {
+      "id": "legacy-chinese-food",
+      "type": "expense",
+      "parentId": "legacy-food",
+      "name": "中餐",
+      "icon": "🥢",
+      "color": "#FB923C",
+      "sortOrder": 0,
+      "isPinned": false,
+      "status": "active",
+      "revision": {
+        "counter": 3,
+        "deviceId": "legacy-phone",
+        "clock": {
+          "legacy-phone": 3
+        }
+      },
+      "createdAt": "2026-08-14T00:00:00.000Z",
+      "updatedAt": "2026-08-14T00:00:00.000Z",
+      "isSystemDefault": true
+    }
+  ],
+  "settings": {
+    "id": "book",
+    "currency": "CNY",
+    "monthComparisonMode": "full-month",
+    "revision": {
+      "counter": 11,
+      "deviceId": "legacy-pc",
+      "clock": {
+        "legacy-phone": 9,
+        "legacy-pc": 11
+      }
+    },
+    "bookEpoch": {
+      "counter": 1,
+      "deviceId": "legacy-phone",
+      "clock": {
+        "legacy-phone": 1
+      }
+    },
+    "updatedAt": "2026-08-17T10:20:00.000Z"
+  },
+  "devices": [
+    {
+      "id": "legacy-phone",
+      "logicalCounter": 9,
+      "lastSyncAt": "2026-08-17T10:19:00.000Z"
+    },
+    {
+      "id": "legacy-pc",
+      "logicalCounter": 11,
+      "lastSyncAt": "2026-08-17T10:20:00.000Z",
+      "retiredAt": "2026-08-17T10:21:00.000Z"
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "legacy-conflict-1",
+      "entityType": "transaction",
+      "entityId": "legacy-tx-lunch",
+      "localValue": {
+        "id": "legacy-tx-lunch",
+        "type": "expense",
+        "amountMinor": 4280,
+        "currency": "CNY",
+        "categoryId": "legacy-food",
+        "subcategoryId": "legacy-chinese-food",
+        "occurredLocalDate": "2026-08-17",
+        "occurredLocalTime": "12:18",
+        "timeZone": "Asia/Shanghai",
+        "note": "手机记录的午饭",
+        "createdAt": "2026-08-17T04:18:00.000Z",
+        "updatedAt": "2026-08-17T04:20:00.000Z",
+        "revision": {
+          "counter": 9,
+          "deviceId": "legacy-phone",
+          "clock": {
+            "legacy-phone": 9,
+            "legacy-pc": 6
+          }
+        }
+      },
+      "remoteValue": {
+        "id": "legacy-tx-lunch",
+        "type": "expense",
+        "amountMinor": 4580,
+        "currency": "CNY",
+        "categoryId": "legacy-food",
+        "subcategoryId": "legacy-chinese-food",
+        "occurredLocalDate": "2026-08-17",
+        "occurredLocalTime": "12:18",
+        "timeZone": "Asia/Shanghai",
+        "note": "电脑记录的午饭",
+        "createdAt": "2026-08-17T04:18:00.000Z",
+        "updatedAt": "2026-08-17T04:21:00.000Z",
+        "revision": {
+          "counter": 11,
+          "deviceId": "legacy-pc",
+          "clock": {
+            "legacy-phone": 8,
+            "legacy-pc": 11
+          }
+        }
+      },
+      "createdAt": "2026-08-17T10:20:30.000Z"
+    }
+  ]
+}

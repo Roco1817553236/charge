@@ -1,12 +1,21 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { LedgerSnapshot } from '../../src/domain/models'
 import {
   exportEncryptedBackup,
-  exportLedgerCsv,
   exportPlainJson,
   importEncryptedBackup,
+  MAX_BACKUP_FILE_BYTES,
   parsePlainJson,
 } from '../../src/services/importExport'
+
+const v12PlainFixture = readFileSync(resolve(process.cwd(), 'tests/fixtures/v1.2-ledger-plain.json'), 'utf8')
+const v12EncryptedFixture = readFileSync(resolve(process.cwd(), 'tests/fixtures/v1.2-ledger-encrypted.json'), 'utf8')
+const v12Expected = JSON.parse(v12PlainFixture) as LedgerSnapshot
+const v12Password = '  v1.2 backup password  '
+const v12RecoveryKey = '2V1aFPEec3EK9N08n5ZHAsaznhP33nqln4ppvaijq70'
+const encoder = new TextEncoder()
 
 const snapshot: LedgerSnapshot = {
   schemaVersion: 1,
@@ -30,24 +39,6 @@ const snapshot: LedgerSnapshot = {
 }
 
 describe('import and export', () => {
-  it('creates an Excel-readable UTF-8 CSV with category names and escaped notes', () => {
-    const csv = exportLedgerCsv(snapshot)
-    expect(csv.startsWith('\uFEFF日期,时间,类型,金额（元）,大类,二级分类,备注')).toBe(true)
-    expect(csv).toContain('2026-08-14,12:30,支出,58.00,餐饮,正餐,"午饭,""套餐"""')
-  })
-
-  it('neutralizes spreadsheet formulas in user-authored CSV cells', () => {
-    const dangerous = {
-      ...snapshot,
-      transactions: [{ ...snapshot.transactions[0]!, note: '=HYPERLINK("https://example.test")' }],
-    }
-
-    const csv = exportLedgerCsv(dangerous)
-
-    expect(csv).toContain('"\'=HYPERLINK(""https://example.test"")"')
-    expect(csv).not.toContain(',"=HYPERLINK')
-  })
-
   it('round-trips a plain portable JSON backup after schema validation', () => {
     expect(parsePlainJson(exportPlainJson(snapshot))).toEqual(snapshot)
     expect(() => parsePlainJson('{"schemaVersion":99}')).toThrow('备份文件格式无效或版本不受支持')
@@ -78,5 +69,32 @@ describe('import and export', () => {
     const backup = await exportEncryptedBackup(snapshot, '足够长的备份同步密码', { iterations: 1_000 })
     expect(backup.fileContent).not.toContain('午饭')
     await expect(importEncryptedBackup(backup.fileContent, { password: '足够长的备份同步密码' })).resolves.toEqual(snapshot)
+  })
+
+  it('imports fixed v1.2 plain and encrypted backups without dropping legacy data', async () => {
+    expect(parsePlainJson(v12PlainFixture)).toEqual(v12Expected)
+    await expect(importEncryptedBackup(v12EncryptedFixture, { password: v12Password })).resolves.toEqual(v12Expected)
+    await expect(importEncryptedBackup(v12EncryptedFixture, { recoveryKey: v12RecoveryKey })).resolves.toEqual(v12Expected)
+
+    const restored = await importEncryptedBackup(v12EncryptedFixture, { recoveryKey: v12RecoveryKey })
+    expect(restored.transactions[0]?.note).toBe('v1.2 中餐午饭')
+    expect(restored.categories.map((category) => category.name)).toEqual(['餐饮', '中餐'])
+    expect(restored.conflicts?.[0]?.entityId).toBe('legacy-tx-lunch')
+    expect(restored.devices.map((device) => device.id)).toEqual(['legacy-phone', 'legacy-pc'])
+    expect(restored.settings.monthComparisonMode).toBe('full-month')
+  })
+
+  it('accepts a plain backup at exactly 16 MiB of UTF-8 and rejects content above the limit', () => {
+    const fixtureBytes = encoder.encode(v12PlainFixture).byteLength
+    const exactLimit = v12PlainFixture + ' '.repeat(MAX_BACKUP_FILE_BYTES - fixtureBytes)
+    expect(encoder.encode(exactLimit)).toHaveLength(MAX_BACKUP_FILE_BYTES)
+    expect(parsePlainJson(exactLimit)).toEqual(v12Expected)
+    expect(() => parsePlainJson(`${exactLimit} `)).toThrow('备份文件格式无效或版本不受支持')
+  })
+
+  it('rejects encrypted backup content above the 16 MiB limit before decrypting', async () => {
+    const fixtureBytes = encoder.encode(v12EncryptedFixture).byteLength
+    const oversized = v12EncryptedFixture + ' '.repeat(MAX_BACKUP_FILE_BYTES - fixtureBytes + 1)
+    await expect(importEncryptedBackup(oversized, { password: v12Password })).rejects.toThrow('加密备份文件格式无效')
   })
 })

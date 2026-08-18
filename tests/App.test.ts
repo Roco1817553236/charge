@@ -3,7 +3,8 @@ import { createPinia } from 'pinia'
 import { nextTick } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import App from '../src/App.vue'
-import type { Category, ConflictRecord, SyncMetadata, Transaction } from '../src/domain/models'
+import type { Category, Transaction } from '../src/domain/models'
+import { MAX_BACKUP_FILE_BYTES } from '../src/services/importExport'
 import { setBookRepository, useBookStore, type BookRepository } from '../src/stores/bookStore'
 
 const now = '2026-08-14T00:00:00.000Z'
@@ -11,22 +12,11 @@ const category: Category = {
   id: 'food', type: 'expense', parentId: null, name: '餐饮', icon: '🍜', color: '#F97316', sortOrder: 0,
   isPinned: true, status: 'active', revision: { counter: 1, deviceId: 'a' }, createdAt: now, updatedAt: now,
 }
-const conflictedTransaction: Transaction = {
-  id: 'tx-1', type: 'expense', amountMinor: 1880, currency: 'CNY', categoryId: 'food', subcategoryId: null,
-  occurredLocalDate: '2026-08-14', occurredLocalTime: '12:30', timeZone: 'Asia/Shanghai', note: '本机午饭',
-  createdAt: now, updatedAt: now, revision: { counter: 2, deviceId: 'device-a' },
-}
-const conflict: ConflictRecord = {
-  id: 'conflict-1', entityType: 'transaction', entityId: 'tx-1', localValue: conflictedTransaction,
-  remoteValue: { ...conflictedTransaction, note: '远端午饭', revision: { counter: 2, deviceId: 'device-b' } }, createdAt: now,
-}
-
 function repository(): BookRepository {
   return {
     initialize: vi.fn().mockResolvedValue(undefined),
     listCategories: vi.fn().mockResolvedValue([category]),
     listTransactions: vi.fn().mockResolvedValue([]),
-    getSyncMetadata: vi.fn().mockResolvedValue({ id: 'sync', pending: false, status: 'local' } satisfies SyncMetadata),
     getBookSettings: vi.fn().mockResolvedValue({
       id: 'book', currency: 'CNY', monthComparisonMode: 'to-date',
       revision: { counter: 1, deviceId: 'a' }, updatedAt: now,
@@ -36,8 +26,6 @@ function repository(): BookRepository {
     updateTransaction: vi.fn(), softDeleteTransaction: vi.fn(), restoreTransaction: vi.fn(),
     saveCategory: vi.fn(), removeCategory: vi.fn(), swapCategorySortOrders: vi.fn(), createSnapshot: vi.fn(), replaceWithBackup: vi.fn(),
     getMigrationRecoverySnapshot: vi.fn().mockResolvedValue(null),
-    createSyncCheckpoint: vi.fn(), applySyncedSnapshot: vi.fn(), completeSync: vi.fn(),
-    setSyncMetadata: vi.fn(), listConflicts: vi.fn().mockResolvedValue([]), resolveConflict: vi.fn(),
   }
 }
 
@@ -59,23 +47,10 @@ describe('App', () => {
     await wrapper.get('[data-testid="nav-ledger"]').trigger('click')
     expect(wrapper.get('[data-testid="nav-ledger"]').attributes('aria-current')).toBe('page')
 
-    await wrapper.get('.sync-status').trigger('click')
-    expect(wrapper.text()).toContain('设置与同步')
-    expect(wrapper.text()).toContain('不需要自建服务器')
-  })
-
-  it('routes an explicit settings conflict choice back to the local repository', async () => {
-    const repo = repository()
-    vi.mocked(repo.listConflicts).mockResolvedValueOnce([conflict]).mockResolvedValue([])
-    setBookRepository(repo)
-    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
-    await flushPromises()
-
-    await wrapper.get('.sync-status').trigger('click')
-    await wrapper.get('[data-testid="conflict-remote-conflict-1"]').trigger('click')
-    await flushPromises()
-
-    expect(repo.resolveConflict).toHaveBeenCalledWith('conflict-1', 'remote')
+    await wrapper.get('button[aria-label="打开设置与备份"]').trigger('click')
+    expect(wrapper.text()).toContain('设置与备份')
+    expect(wrapper.text()).toContain('数据仅保存在当前浏览器')
+    expect(wrapper.text()).not.toContain('OneDrive')
   })
 
   it('lets a delete undo notification be dismissed without restoring the transaction', async () => {
@@ -147,7 +122,7 @@ describe('App', () => {
     const wrapper = mount(App, { global: { plugins: [createPinia()] } })
     await flushPromises()
 
-    await wrapper.get('.sync-status').trigger('click')
+    await wrapper.get('button[aria-label="打开设置与备份"]').trigger('click')
     const rescueButton = wrapper.get('[data-testid="export-migration-recovery"]')
 
     const readsBeforeDownload = vi.mocked(repo.getMigrationRecoverySnapshot).mock.calls.length
@@ -158,6 +133,49 @@ describe('App', () => {
       await flushPromises()
       expect(confirmDownload).toHaveBeenCalledWith(expect.stringContaining('明文'))
       expect(repo.getMigrationRecoverySnapshot).toHaveBeenCalledTimes(readsBeforeDownload)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('never replaces the ledger for invalid, oversized, or cancelled imports', async () => {
+    const repo = repository()
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+    await wrapper.get('button[aria-label="打开设置与备份"]').trigger('click')
+    const input = wrapper.get('input[type="file"]')
+
+    const chooseFile = async (file: File): Promise<void> => {
+      Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
+      await input.trigger('change')
+      await flushPromises()
+    }
+
+    await chooseFile(new File(['{}'], 'invalid.json', { type: 'application/json' }))
+    expect(repo.replaceWithBackup).not.toHaveBeenCalled()
+
+    const oversized = new File(['{}'], 'oversized.json', { type: 'application/json' })
+    Object.defineProperty(oversized, 'size', { configurable: true, value: MAX_BACKUP_FILE_BYTES + 1 })
+    await chooseFile(oversized)
+    expect(repo.replaceWithBackup).not.toHaveBeenCalled()
+
+    const confirmImport = vi.fn().mockReturnValue(false)
+    vi.stubGlobal('confirm', confirmImport)
+    try {
+      await chooseFile(new File([JSON.stringify({
+        schemaVersion: 1,
+        exportedAt: now,
+        transactions: [],
+        categories: [category],
+        settings: {
+          id: 'book', currency: 'CNY', monthComparisonMode: 'to-date',
+          revision: { counter: 1, deviceId: 'a' }, updatedAt: now,
+        },
+        devices: [{ id: 'a', logicalCounter: 1 }],
+      })], 'valid.json', { type: 'application/json' }))
+      expect(confirmImport).toHaveBeenCalledWith(expect.stringContaining('valid.json'))
+      expect(repo.replaceWithBackup).not.toHaveBeenCalled()
     } finally {
       vi.unstubAllGlobals()
     }
