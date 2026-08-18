@@ -14,45 +14,10 @@ import {
 } from '../security/cryptoVault'
 
 export const MAX_BACKUP_FILE_BYTES = 16 * 1024 * 1024
+const utf8Encoder = new TextEncoder()
 
-function csvCell(value: string): string {
-  const safeValue = /^[\s\u0000-\u001F]*[=+@-]/u.test(value) ? `'${value}` : value
-  return /[",\r\n]/.test(safeValue) ? `"${safeValue.replaceAll('"', '""')}"` : safeValue
-}
-
-function resolvedCategories(
-  categoryMap: Map<string, Category>,
-  categoryId: string,
-  subcategoryId: string | null,
-): { root: Category | undefined; child: Category | undefined } {
-  const child = subcategoryId ? categoryMap.get(subcategoryId) : undefined
-  const root = categoryMap.get(child?.parentId ?? categoryId)
-  return { root, child }
-}
-
-export function exportLedgerCsv(snapshot: LedgerSnapshot): string {
-  const categoryMap = new Map(snapshot.categories.map((category) => [category.id, category]))
-  const header = ['日期', '时间', '类型', '金额（元）', '大类', '二级分类', '备注']
-  const rows = snapshot.transactions
-    .filter((transaction) => !transaction.deletedAt)
-    .sort((left, right) =>
-      `${left.occurredLocalDate}T${left.occurredLocalTime}`.localeCompare(
-        `${right.occurredLocalDate}T${right.occurredLocalTime}`,
-      ),
-    )
-    .map((transaction) => {
-      const { root, child } = resolvedCategories(categoryMap, transaction.categoryId, transaction.subcategoryId)
-      return [
-        transaction.occurredLocalDate,
-        transaction.occurredLocalTime,
-        transaction.type === 'expense' ? '支出' : '收入',
-        (transaction.amountMinor / 100).toFixed(2),
-        root?.name ?? '未知分类',
-        child?.name ?? '',
-        transaction.note,
-      ].map(csvCell).join(',')
-    })
-  return `\uFEFF${header.join(',')}\r\n${rows.join('\r\n')}`
+function exceedsBackupFileLimit(content: string): boolean {
+  return utf8Encoder.encode(content).byteLength > MAX_BACKUP_FILE_BYTES
 }
 
 export function exportPlainJson(snapshot: LedgerSnapshot): string {
@@ -162,7 +127,7 @@ export function isLedgerSnapshot(value: unknown): value is LedgerSnapshot {
 
 export function parsePlainJson(content: string): LedgerSnapshot {
   try {
-    if (content.length > MAX_BACKUP_FILE_BYTES) throw new Error('oversized')
+    if (exceedsBackupFileLimit(content)) throw new Error('oversized')
     const parsed: unknown = JSON.parse(content)
     if (!isLedgerSnapshot(parsed)) throw new Error('invalid')
     return parsed
@@ -186,7 +151,7 @@ export async function importEncryptedBackup(
 ): Promise<LedgerSnapshot> {
   let envelope: EncryptedVaultEnvelope
   try {
-    if (content.length > MAX_BACKUP_FILE_BYTES) throw new Error('oversized')
+    if (exceedsBackupFileLimit(content)) throw new Error('oversized')
     envelope = JSON.parse(content) as EncryptedVaultEnvelope
   } catch {
     throw new Error('加密备份文件格式无效')
