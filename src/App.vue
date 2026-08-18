@@ -32,7 +32,7 @@ const categoryManagerOpen = ref(false)
 const settingsOpen = ref(false)
 const updateController = new PwaUpdateController()
 const updateState = updateController.state
-const appVersion = import.meta.env.VITE_APP_VERSION || '1.1.1'
+const appVersion = import.meta.env.VITE_APP_VERSION || '1.2.0'
 let stopBackgroundSync: (() => void) | null = null
 let dateRefreshTimer: number | null = null
 

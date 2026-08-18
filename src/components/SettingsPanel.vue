@@ -239,9 +239,9 @@ function describeConflictValue(value: ConflictRecord['localValue']): string {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>同一大类下的小类环形图改用不同颜色，扇区占比更直观</li>
-          <li>同一个小类跨月份和金额排名变化时保持相同图表颜色</li>
-          <li>配色仅用于统计展示，不修改分类颜色和已有账本数据</li>
+          <li>点击统计中的小类，可在当前页面直接展开对应账单流水</li>
+          <li>明细自动跟随月度、年度和完整月份口径，金额与图表严格对账</li>
+          <li>流水显示日期、时间、备注和金额，并提供始终可见的“收起”按钮</li>
         </ul>
       </details>
     </section>

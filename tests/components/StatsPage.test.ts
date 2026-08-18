@@ -65,6 +65,135 @@ describe('StatsPage', () => {
     expect(wrapper.get('[data-testid="expense-category-transport"]').classes()).toContain('active')
   })
 
+  it('opens and closes the selected subcategory transactions inline', async () => {
+    const wrapper = mount(StatsPage, { props: { transactions, categories, asOfDate: '2026-08-14' } })
+    const lunch = wrapper.get('[data-testid="expense-subcategory-lunch"]')
+
+    expect(wrapper.find('[data-testid="expense-subcategory-details"]').exists()).toBe(false)
+    expect(lunch.element.tagName).toBe('BUTTON')
+    expect(lunch.attributes('aria-pressed')).toBe('false')
+
+    await lunch.trigger('click')
+
+    const details = wrapper.get('[data-testid="expense-subcategory-details"]')
+    expect(lunch.attributes('aria-pressed')).toBe('true')
+    expect(details.text()).toContain('正餐流水')
+    expect(details.text()).toContain('本月至今')
+    expect(details.text()).toContain('1 笔')
+    expect(details.text()).toContain('¥30.00')
+    expect(details.text()).toContain('2026-08-10')
+    expect(details.text()).toContain('12:00')
+    expect(details.text()).toContain('无备注')
+
+    await lunch.trigger('click')
+
+    expect(wrapper.find('[data-testid="expense-subcategory-details"]').exists()).toBe(false)
+    expect(lunch.attributes('aria-pressed')).toBe('false')
+
+    await lunch.trigger('click')
+    await wrapper.get('[data-testid="expense-subcategory-details-close"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="expense-subcategory-details"]').exists()).toBe(false)
+    expect(lunch.attributes('aria-pressed')).toBe('false')
+  })
+
+  it('links the expanded details and restores focus to its subcategory control when closed', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const wrapper = mount(StatsPage, {
+      attachTo: host,
+      props: { transactions, categories, asOfDate: '2026-08-14' },
+    })
+
+    try {
+      const lunch = wrapper.get('[data-testid="expense-subcategory-lunch"]')
+      await lunch.trigger('click')
+      expect(lunch.attributes('aria-controls')).toBe('expense-subcategory-details')
+
+      const close = wrapper.get('[data-testid="expense-subcategory-details-close"]')
+      const closeElement = close.element as HTMLElement
+      closeElement.focus()
+      await close.trigger('click')
+
+      expect(document.activeElement).toBe(lunch.element)
+    } finally {
+      wrapper.unmount()
+      host.remove()
+    }
+  })
+
+  it('clears an expanded subcategory when another root category is selected', async () => {
+    const wrapper = mount(StatsPage, { props: { transactions, categories, asOfDate: '2026-08-14' } })
+
+    await wrapper.get('[data-testid="expense-subcategory-lunch"]').trigger('click')
+    expect(wrapper.find('[data-testid="expense-subcategory-details"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="expense-category-transport"]').trigger('click')
+    expect(wrapper.find('[data-testid="expense-subcategory-details"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="expense-category-food"]').trigger('click')
+    expect(wrapper.find('[data-testid="expense-subcategory-details"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="expense-subcategory-lunch"]').attributes('aria-pressed')).toBe('false')
+  })
+
+  it('clears an expanded subcategory when the selected period no longer contains it', async () => {
+    const periodTransactions = [
+      tx('august-lunch', '2026-08-10', 3000, 'expense', 'food', 'lunch'),
+      tx('july-unclassified', '2026-07-10', 2000, 'expense', 'food'),
+    ]
+    const wrapper = mount(StatsPage, {
+      props: { transactions: periodTransactions, categories, asOfDate: '2026-08-14' },
+    })
+
+    await wrapper.get('[data-testid="expense-subcategory-lunch"]').trigger('click')
+    await wrapper.get('button[aria-label="上个月"]').trigger('click')
+    expect(wrapper.find('[data-testid="expense-subcategory-details"]').exists()).toBe(false)
+
+    await wrapper.get('button[aria-label="下个月"]').trigger('click')
+    expect(wrapper.find('[data-testid="expense-subcategory-details"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="expense-subcategory-lunch"]').attributes('aria-pressed')).toBe('false')
+  })
+
+  it('replaces the inline details when a sibling subcategory is selected', async () => {
+    const breakfast: Category = {
+      id: 'breakfast', type: 'expense', parentId: 'food', name: '早餐', icon: '🥣', color: '#F59E0B',
+      sortOrder: 1, isPinned: false, status: 'active', revision, createdAt: now, updatedAt: now,
+    }
+    const siblingTransactions = [
+      tx('lunch-row', '2026-08-10', 3000, 'expense', 'food', 'lunch'),
+      tx('breakfast-row', '2026-08-11', 1500, 'expense', 'food', 'breakfast'),
+    ]
+    const wrapper = mount(StatsPage, {
+      props: { transactions: siblingTransactions, categories: [...categories, breakfast], asOfDate: '2026-08-14' },
+    })
+
+    const lunch = wrapper.get('[data-testid="expense-subcategory-lunch"]')
+    const breakfastRow = wrapper.get('[data-testid="expense-subcategory-breakfast"]')
+    await lunch.trigger('click')
+    await breakfastRow.trigger('click')
+
+    const details = wrapper.get('[data-testid="expense-subcategory-details"]')
+    expect(details.text()).toContain('早餐流水')
+    expect(details.text()).toContain('¥15.00')
+    expect(wrapper.find('[data-testid="expense-subcategory-transaction-breakfast-row"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="expense-subcategory-transaction-lunch-row"]').exists()).toBe(false)
+    expect(lunch.attributes('aria-pressed')).toBe('false')
+    expect(breakfastRow.attributes('aria-pressed')).toBe('true')
+  })
+
+  it('keeps expanded details when the same subcategory exists in a historical month', async () => {
+    const wrapper = mount(StatsPage, { props: { transactions, categories, asOfDate: '2026-08-14' } })
+
+    await wrapper.get('[data-testid="expense-subcategory-lunch"]').trigger('click')
+    await wrapper.get('button[aria-label="上个月"]').trigger('click')
+
+    const details = wrapper.get('[data-testid="expense-subcategory-details"]')
+    expect(details.text()).toContain('2026 年 7 月')
+    expect(details.text()).toContain('1 笔')
+    expect(details.text()).toContain('¥20.00')
+    expect(wrapper.find('[data-testid="expense-subcategory-transaction-expense-previous"]').exists()).toBe(true)
+  })
+
   it('lets the current month switch from to-date to complete-month expense data', async () => {
     const wrapper = mount(StatsPage, { props: { transactions, categories, asOfDate: '2026-08-14' } })
     expect(wrapper.text()).toContain('¥40.00')
@@ -74,6 +203,22 @@ describe('StatsPage', () => {
     expect(wrapper.text()).toContain('本月完整数据')
     expect(wrapper.text()).toContain('¥90.00')
     expect(wrapper.emitted('update:monthComparisonMode')?.at(-1)).toEqual(['full-month'])
+  })
+
+  it('refreshes expanded transactions when the monthly comparison mode changes', async () => {
+    const wrapper = mount(StatsPage, { props: { transactions, categories, asOfDate: '2026-08-14' } })
+
+    await wrapper.get('[data-testid="expense-subcategory-lunch"]').trigger('click')
+    expect(wrapper.get('[data-testid="expense-subcategory-details"]').text()).toContain('1 笔')
+    expect(wrapper.find('[data-testid="expense-subcategory-transaction-food-current-future"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="comparison-full-month"]').trigger('click')
+
+    const details = wrapper.get('[data-testid="expense-subcategory-details"]')
+    expect(details.text()).toContain('本月完整数据')
+    expect(details.text()).toContain('2 笔')
+    expect(details.text()).toContain('¥80.00')
+    expect(wrapper.find('[data-testid="expense-subcategory-transaction-food-current-future"]').exists()).toBe(true)
   })
 
   it('switches to an expense-only annual view and uses complete historical years', async () => {
@@ -89,6 +234,33 @@ describe('StatsPage', () => {
     await wrapper.get('button[aria-label="上一年"]').trigger('click')
     expect(wrapper.text()).toContain('2025 年')
     expect(wrapper.text()).toContain('¥100.00')
+  })
+
+  it('refreshes an expanded subcategory with the annual period when the view changes', async () => {
+    const wrapper = mount(StatsPage, { props: { transactions, categories, asOfDate: '2026-08-14' } })
+
+    await wrapper.get('[data-testid="expense-subcategory-lunch"]').trigger('click')
+    await wrapper.get('[data-testid="stats-year"]').trigger('click')
+
+    const details = wrapper.get('[data-testid="expense-subcategory-details"]')
+    expect(details.text()).toContain('2026 年至今')
+    expect(details.text()).toContain('2 笔')
+    expect(details.text()).toContain('¥50.00')
+    expect(wrapper.find('[data-testid="expense-subcategory-transaction-expense-previous"]').exists()).toBe(true)
+  })
+
+  it('keeps expanded details and refreshes them when the selected year changes', async () => {
+    const wrapper = mount(StatsPage, { props: { transactions, categories, asOfDate: '2026-08-14' } })
+
+    await wrapper.get('[data-testid="expense-subcategory-lunch"]').trigger('click')
+    await wrapper.get('[data-testid="stats-year"]').trigger('click')
+    await wrapper.get('button[aria-label="上一年"]').trigger('click')
+
+    const details = wrapper.get('[data-testid="expense-subcategory-details"]')
+    expect(details.text()).toContain('2025 年')
+    expect(details.text()).toContain('1 笔')
+    expect(details.text()).toContain('¥40.00')
+    expect(wrapper.find('[data-testid="expense-subcategory-transaction-expense-last-year"]').exists()).toBe(true)
   })
 
   it('keeps a non-leading category selected when the next view still contains it', async () => {

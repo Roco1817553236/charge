@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { Category, Transaction } from '../domain/models'
 import { formatMinor } from '../domain/money'
 import {
+  buildExpenseSubcategoryDetails,
   compareExpenseMonthPeriods,
   compareExpenseYearPeriods,
   type ExpenseCategoryTotal,
+  type ExpenseStatsPeriod,
 } from '../domain/reports'
 
 const props = withDefaults(defineProps<{
@@ -23,6 +25,8 @@ const view = ref<'month' | 'year'>('month')
 const selectedMonth = ref(props.asOfDate.slice(0, 7))
 const selectedYear = ref(Number(props.asOfDate.slice(0, 4)))
 const selectedCategoryId = ref<string | null>(null)
+const selectedSubcategoryId = ref<string | null>(null)
+const subcategoryButtonElements = new Map<string, HTMLButtonElement>()
 const currentMonthMode = ref<'to-date' | 'full-month'>(props.monthComparisonMode)
 
 watch(() => props.monthComparisonMode, (mode) => { currentMonthMode.value = mode })
@@ -58,9 +62,50 @@ watch(
   { immediate: true },
 )
 
+watch(selectedCategoryId, () => {
+  selectedSubcategoryId.value = null
+})
+
 const selectedCategory = computed<ExpenseCategoryTotal | null>(() =>
   comparison.value.current.categoryBreakdown.find((row) => row.categoryId === selectedCategoryId.value) ?? null,
 )
+
+watch(
+  () => selectedCategory.value?.subcategoryBreakdown.map((row) => row.categoryId) ?? [],
+  (categoryIds) => {
+    if (selectedSubcategoryId.value && !categoryIds.includes(selectedSubcategoryId.value)) {
+      selectedSubcategoryId.value = null
+    }
+  },
+)
+
+const selectedSubcategory = computed(() =>
+  selectedCategory.value?.subcategoryBreakdown.find((row) => row.categoryId === selectedSubcategoryId.value) ?? null,
+)
+
+const statsPeriod = computed<ExpenseStatsPeriod>(() => view.value === 'month'
+  ? {
+      view: 'month',
+      yearMonth: selectedMonth.value,
+      asOfDate: props.asOfDate,
+      mode: monthMode.value,
+    }
+  : { view: 'year', year: selectedYear.value, asOfDate: props.asOfDate })
+
+const selectedSubcategoryDetails = computed(() => {
+  if (!selectedCategory.value || !selectedSubcategory.value) return null
+  return buildExpenseSubcategoryDetails(
+    props.transactions,
+    props.categories,
+    statsPeriod.value,
+    selectedCategory.value.categoryId,
+    selectedSubcategory.value.categoryId,
+  )
+})
+
+const detailsPeriodLabel = computed(() => view.value === 'month'
+  ? `${monthTitle(selectedMonth.value)} · ${comparison.value.currentLabel}`
+  : comparison.value.currentLabel)
 
 function donutBackground(rows: Array<{ color: string; percentage: number }>): string {
   if (rows.length === 0) return 'conic-gradient(var(--line) 0 100%)'
@@ -93,6 +138,24 @@ function signedAmount(value: number): string {
 function setComparisonMode(mode: 'to-date' | 'full-month'): void {
   currentMonthMode.value = mode
   emit('update:monthComparisonMode', mode)
+}
+
+function toggleSubcategoryDetails(categoryId: string): void {
+  selectedSubcategoryId.value = selectedSubcategoryId.value === categoryId ? null : categoryId
+}
+
+function setSubcategoryButtonRef(categoryId: string, element: unknown): void {
+  if (element instanceof HTMLButtonElement) subcategoryButtonElements.set(categoryId, element)
+  else subcategoryButtonElements.delete(categoryId)
+}
+
+async function closeSubcategoryDetails(): Promise<void> {
+  const control = selectedSubcategoryId.value
+    ? subcategoryButtonElements.get(selectedSubcategoryId.value)
+    : undefined
+  selectedSubcategoryId.value = null
+  await nextTick()
+  control?.focus()
 }
 
 function setView(nextView: 'month' | 'year'): void {
@@ -210,17 +273,67 @@ function monthTitle(value: string): string {
             <span><strong>{{ formatMinor(selectedCategory.expenseMinor) }}</strong><small>{{ selectedCategory.name }}合计</small></span>
           </div>
           <div class="breakdown-list subcategory-list">
-            <div
+            <button
               v-for="row in selectedCategory.subcategoryBreakdown"
               :key="row.categoryId"
               :data-testid="`expense-subcategory-${row.categoryId}`"
+              type="button"
               class="breakdown-row"
+              :ref="(element) => setSubcategoryButtonRef(row.categoryId, element)"
+              :class="{ active: selectedSubcategoryId === row.categoryId }"
+              :aria-pressed="selectedSubcategoryId === row.categoryId"
+              :aria-controls="selectedSubcategoryId === row.categoryId ? 'expense-subcategory-details' : undefined"
+              @click="toggleSubcategoryDetails(row.categoryId)"
             >
               <i :style="{ background: row.color }" />
               <span>{{ row.name }}</span>
               <strong>{{ formatMinor(row.expenseMinor) }}</strong>
               <small>{{ percentageLabel(row.percentage) }}</small>
-            </div>
+            </button>
+          </div>
+        </div>
+      </article>
+
+      <div v-if="selectedSubcategory" class="breakdown-connector details-connector">
+        <span>{{ selectedSubcategory.name }}</span>的账单流水
+      </div>
+
+      <article
+        v-if="selectedSubcategory && selectedSubcategoryDetails"
+        id="expense-subcategory-details"
+        class="chart-card subcategory-details"
+        data-testid="expense-subcategory-details"
+      >
+        <header class="details-header">
+          <div>
+            <strong>{{ selectedSubcategory.name }}流水</strong>
+            <span>
+              {{ detailsPeriodLabel }} · {{ selectedSubcategoryDetails.count }} 笔 ·
+              {{ formatMinor(selectedSubcategoryDetails.expenseMinor) }}
+            </span>
+          </div>
+          <button
+            type="button"
+            data-testid="expense-subcategory-details-close"
+            :aria-label="`收起${selectedSubcategory.name}流水`"
+            @click="closeSubcategoryDetails"
+          >收起</button>
+        </header>
+        <div class="subcategory-transaction-list">
+          <div
+            v-for="transaction in selectedSubcategoryDetails.transactions"
+            :key="transaction.id"
+            :data-testid="`expense-subcategory-transaction-${transaction.id}`"
+            class="subcategory-transaction"
+          >
+            <time :datetime="`${transaction.occurredLocalDate}T${transaction.occurredLocalTime}`">
+              {{ transaction.occurredLocalDate }}
+              <small>{{ transaction.occurredLocalTime }}</small>
+            </time>
+            <span class="transaction-note" :aria-label="transaction.note || '无备注'">
+              {{ transaction.note || '无备注' }}
+            </span>
+            <strong>-{{ formatMinor(transaction.amountMinor) }}</strong>
           </div>
         </div>
       </article>
@@ -279,9 +392,19 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .breakdown-connector::before, .breakdown-connector::after { width: 48px; height: 1px; background: var(--line); content: ''; }
 .breakdown-connector span { color: var(--accent-strong); font-weight: 800; }
 .subcategory-card { margin-top: 12px; }
-.subcategory-list .breakdown-row { cursor: default; }
+.subcategory-list .breakdown-row { cursor: pointer; }
+.details-connector { margin-top: 12px; }
+.subcategory-details { margin-top: 12px; }
+.details-header { gap: 12px; }
+.details-header > button { flex: 0 0 auto; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); color: var(--accent-strong); font-size: 10px; font-weight: 750; }
+.subcategory-transaction-list { display: grid; }
+.subcategory-transaction { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; padding: 11px 2px; border-top: 1px solid var(--line); }
+.subcategory-transaction time { display: grid; gap: 2px; color: var(--ink); font-size: 10px; font-weight: 700; }
+.subcategory-transaction time small { color: var(--muted); font-size: 9px; font-weight: 600; }
+.transaction-note { overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.subcategory-transaction > strong { color: var(--danger); font-size: 11px; white-space: nowrap; }
 .chart-empty { display: grid; min-height: 240px; place-content: center; place-items: center; gap: 7px; margin-top: 14px; padding: 28px; border: 1px dashed var(--line); border-radius: 22px; background: var(--surface); color: var(--muted); text-align: center; }
 .chart-empty > span { font-size: 34px; }.chart-empty strong { color: var(--ink); font-size: 13px; }.chart-empty p { margin: 0; font-size: 10px; }
 @media (min-width: 700px) { .stats-page { padding-top: 36px; }.metric-grid { grid-template-columns: repeat(3, 1fr); }.metric:first-child { grid-row: auto; }.category-layout { grid-template-columns: 160px minmax(0, 1fr); }.donut { width: 145px; height: 145px; }.donut::after { inset: 29px; } }
-@media (max-width: 520px) { .category-layout { grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }.donut { width: 92px; height: 92px; }.donut::after { inset: 18px; }.donut strong { max-width: 62px; font-size: 10px; }.breakdown-list button, .breakdown-row { grid-template-columns: 7px minmax(36px, 1fr) auto auto; gap: 4px; padding: 7px 3px; font-size: 9px; }.breakdown-list strong, .breakdown-list small { font-size: 8px; } }
+@media (max-width: 520px) { .category-layout { grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }.donut { width: 92px; height: 92px; }.donut::after { inset: 18px; }.donut strong { max-width: 62px; font-size: 10px; }.breakdown-list button, .breakdown-row { grid-template-columns: 7px minmax(36px, 1fr) auto auto; gap: 4px; padding: 7px 3px; font-size: 9px; }.breakdown-list strong, .breakdown-list small { font-size: 8px; }.subcategory-transaction { grid-template-columns: 78px minmax(0, 1fr) auto; gap: 7px; }.subcategory-transaction time, .transaction-note, .subcategory-transaction > strong { font-size: 9px; } }
 </style>

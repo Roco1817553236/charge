@@ -42,6 +42,27 @@ export interface ExpensePeriodComparison {
   previousLabel: string
 }
 
+export interface ExpenseMonthStatsPeriod {
+  view: 'month'
+  yearMonth: string
+  asOfDate: string
+  mode: 'to-date' | 'full-month'
+}
+
+export interface ExpenseYearStatsPeriod {
+  view: 'year'
+  year: number
+  asOfDate: string
+}
+
+export type ExpenseStatsPeriod = ExpenseMonthStatsPeriod | ExpenseYearStatsPeriod
+
+export interface ExpenseSubcategoryDetails {
+  transactions: Transaction[]
+  expenseMinor: number
+  count: number
+}
+
 const SUBCATEGORY_CHART_PALETTE = [
   '#2563EB',
   '#F97316',
@@ -133,6 +154,71 @@ function inRange(date: string, start: string, end: string): boolean {
   return date >= start && date <= end
 }
 
+function resolveExpenseBucket(
+  transaction: Transaction,
+  categoryMap: Map<string, Category>,
+): { rootId: string; childId: string; selectedChild?: Category } {
+  const selectedChild = transaction.subcategoryId ? categoryMap.get(transaction.subcategoryId) : undefined
+  if (selectedChild?.parentId) {
+    return { rootId: selectedChild.parentId, childId: selectedChild.id, selectedChild }
+  }
+  return {
+    rootId: transaction.categoryId,
+    childId: transaction.subcategoryId
+      ? `__missing__:${transaction.subcategoryId}`
+      : `__unclassified__:${transaction.categoryId}`,
+  }
+}
+
+function expenseStatsPeriodBounds(period: ExpenseStatsPeriod): { startDate: string; endDate: string } {
+  if (period.view === 'year') {
+    const asOfYear = Number(period.asOfDate.slice(0, 4))
+    return {
+      startDate: `${period.year}-01-01`,
+      endDate: period.year === asOfYear ? `${period.year}-${period.asOfDate.slice(5)}` : `${period.year}-12-31`,
+    }
+  }
+
+  const [year, month] = period.yearMonth.split('-').map(Number)
+  const requestedDay = Number(period.asOfDate.slice(-2))
+  const cutoff = period.mode === 'to-date'
+    ? Math.min(requestedDay, daysInMonth(year!, month!))
+    : daysInMonth(year!, month!)
+  return {
+    startDate: `${period.yearMonth}-01`,
+    endDate: `${period.yearMonth}-${String(cutoff).padStart(2, '0')}`,
+  }
+}
+
+export function buildExpenseSubcategoryDetails(
+  transactions: Transaction[],
+  categories: Category[],
+  period: ExpenseStatsPeriod,
+  rootCategoryId: string,
+  subcategoryRowId: string,
+): ExpenseSubcategoryDetails {
+  const { startDate, endDate } = expenseStatsPeriodBounds(period)
+  const categoryMap = new Map(
+    categories.filter((category) => !category.deletedAt).map((category) => [category.id, category]),
+  )
+  const rows = activeTransactions(transactions)
+    .filter((transaction) => {
+      if (transaction.type !== 'expense' || !inRange(transaction.occurredLocalDate, startDate, endDate)) return false
+      const bucket = resolveExpenseBucket(transaction, categoryMap)
+      return bucket.rootId === rootCategoryId && bucket.childId === subcategoryRowId
+    })
+    .sort((left, right) => (
+      right.occurredLocalDate.localeCompare(left.occurredLocalDate)
+      || right.occurredLocalTime.localeCompare(left.occurredLocalTime)
+      || left.id.localeCompare(right.id)
+    ))
+  return {
+    transactions: rows,
+    expenseMinor: rows.reduce((sum, transaction) => sum + transaction.amountMinor, 0),
+    count: rows.length,
+  }
+}
+
 function totalsFor(transactions: Transaction[]): PeriodTotals {
   const expenseMinor = transactions.reduce(
     (total, transaction) => total + (transaction.type === 'expense' ? transaction.amountMinor : 0),
@@ -175,15 +261,8 @@ function buildExpenseReportBetween(
   const childAmounts = new Map<string, Map<string, { name: string; color: string; expenseMinor: number }>>()
 
   rows.forEach((transaction) => {
-    const selectedChild = transaction.subcategoryId ? categoryMap.get(transaction.subcategoryId) : undefined
-    const hasCurrentParent = Boolean(selectedChild?.parentId)
-    const rootId = hasCurrentParent ? selectedChild!.parentId! : transaction.categoryId
-    const root = categoryMap.get(rootId)
-    const childId = hasCurrentParent
-      ? selectedChild!.id
-      : transaction.subcategoryId
-        ? `__missing__:${transaction.subcategoryId}`
-        : `__unclassified__:${rootId}`
+    const { rootId, childId, selectedChild } = resolveExpenseBucket(transaction, categoryMap)
+    const hasCurrentParent = Boolean(selectedChild)
     const childName = hasCurrentParent
       ? selectedChild!.name
       : transaction.subcategoryId ? '已删除小类' : '未细分类'
@@ -321,20 +400,17 @@ export function compareExpenseMonthPeriods(
   mode: 'to-date' | 'full-month',
 ): ExpensePeriodComparison {
   const previousYearMonth = previousMonth(yearMonth)
-  const [currentYear, currentMonth] = yearMonth.split('-').map(Number)
   const [previousYear, previousMonthNumber] = previousYearMonth.split('-').map(Number)
   const requestedDay = Number(asOfDate.slice(-2))
-  const currentCutoff = mode === 'to-date'
-    ? Math.min(requestedDay, daysInMonth(currentYear!, currentMonth!))
-    : daysInMonth(currentYear!, currentMonth!)
   const previousCutoff = mode === 'to-date'
     ? Math.min(requestedDay, daysInMonth(previousYear!, previousMonthNumber!))
     : daysInMonth(previousYear!, previousMonthNumber!)
+  const currentBounds = expenseStatsPeriodBounds({ view: 'month', yearMonth, asOfDate, mode })
   const current = buildExpenseReportBetween(
     transactions,
     categories,
-    `${yearMonth}-01`,
-    `${yearMonth}-${String(currentCutoff).padStart(2, '0')}`,
+    currentBounds.startDate,
+    currentBounds.endDate,
   )
   const previous = buildExpenseReportBetween(
     transactions,
@@ -359,11 +435,12 @@ export function compareExpenseYearPeriods(
   const asOfYear = Number(asOfDate.slice(0, 4))
   const isCurrentYear = year === asOfYear
   const monthDay = asOfDate.slice(5)
+  const currentBounds = expenseStatsPeriodBounds({ view: 'year', year, asOfDate })
   const current = buildExpenseReportBetween(
     transactions,
     categories,
-    `${year}-01-01`,
-    isCurrentYear ? `${year}-${monthDay}` : `${year}-12-31`,
+    currentBounds.startDate,
+    currentBounds.endDate,
   )
   const previous = buildExpenseReportBetween(
     transactions,

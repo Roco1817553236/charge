@@ -20,6 +20,18 @@ test('records a transaction and exposes it in the ledger and statistics', async 
   const stats = page.locator('section[aria-labelledby="stats-title"]')
   await expect(stats.getByRole('heading', { name: '支出去向' })).toBeVisible()
   await expect(stats.getByText('¥18.80').first()).toBeVisible()
+
+  const subcategory = stats.locator('.subcategory-list button').first()
+  await subcategory.press('Enter')
+  const details = stats.getByTestId('expense-subcategory-details')
+  await expect(details).toContainText('端到端验收午饭')
+  await expect(details).toContainText('¥18.80')
+  await details.getByRole('button', { name: /收起/ }).click()
+  await expect(details).toHaveCount(0)
+  await expect(subcategory).toBeFocused()
+
+  await subcategory.press('Space')
+  await expect(details).toContainText('端到端验收午饭')
 })
 
 test('persists an unfinished draft across reload and lets the user undo a saved row', async ({ page }) => {

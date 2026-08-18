@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest'
 import type { Category, Transaction } from '../../src/domain/models'
 import {
   buildAnnualComparison,
+  buildExpenseSubcategoryDetails,
   buildMonthlyReport,
   compareExpenseMonthPeriods,
   compareExpenseYearPeriods,
   compareMonthPeriods,
   daysInMonth,
+  type ExpensePeriodReport,
+  type ExpenseStatsPeriod,
 } from '../../src/domain/reports'
 
 const revision = { counter: 1, deviceId: 'device-a' }
@@ -302,5 +305,196 @@ describe('expense-focused breakdown reports', () => {
     expect(historical.previous.expenseMinor).toBe(2000)
     expect(historical.currentLabel).toBe('2025 年')
     expect(historical.previousLabel).toBe('2024 年')
+  })
+
+  it('returns current month-to-date transactions for a real subcategory in reverse chronological order', () => {
+    const details = buildExpenseSubcategoryDetails(
+      [
+        transaction('meal-old', '2026-08-10', 1200, 'expense', { subcategoryId: 'meal', occurredLocalTime: '12:10' }),
+        transaction('meal-new', '2026-08-14', 2300, 'expense', { subcategoryId: 'meal', occurredLocalTime: '18:30' }),
+        transaction('meal-after-cutoff', '2026-08-20', 9000, 'expense', { subcategoryId: 'meal' }),
+        transaction('other-child', '2026-08-12', 800, 'expense', { categoryId: 'transport', subcategoryId: 'bus' }),
+        transaction('ignored-income-detail', '2026-08-13', 5000, 'income', { categoryId: 'salary', subcategoryId: 'meal' }),
+        transaction('ignored-deleted-detail', '2026-08-13', 7000, 'expense', {
+          subcategoryId: 'meal', deletedAt: now, deleteRevision: revision,
+        }),
+      ],
+      expenseCategories,
+      { view: 'month', yearMonth: '2026-08', asOfDate: '2026-08-14', mode: 'to-date' },
+      'food',
+      'meal',
+    )
+
+    expect(details.transactions.map((item) => item.id)).toEqual(['meal-new', 'meal-old'])
+    expect(details.expenseMinor).toBe(3500)
+    expect(details.count).toBe(2)
+  })
+
+  it('uses year-to-date for current-year details and the complete year for historical details', () => {
+    const rows = [
+      transaction('current-jan', '2026-01-02', 500, 'expense', { subcategoryId: 'meal' }),
+      transaction('current-cutoff', '2026-08-14', 1000, 'expense', { subcategoryId: 'meal' }),
+      transaction('current-after-cutoff', '2026-08-20', 9000, 'expense', { subcategoryId: 'meal' }),
+      transaction('historical-late', '2025-12-20', 3000, 'expense', { subcategoryId: 'meal' }),
+    ]
+    const current = buildExpenseSubcategoryDetails(
+      rows,
+      expenseCategories,
+      { view: 'year', year: 2026, asOfDate: '2026-08-14' },
+      'food',
+      'meal',
+    )
+    const historical = buildExpenseSubcategoryDetails(
+      rows,
+      expenseCategories,
+      { view: 'year', year: 2025, asOfDate: '2026-08-14' },
+      'food',
+      'meal',
+    )
+
+    expect(current.transactions.map((item) => item.id)).toEqual(['current-cutoff', 'current-jan'])
+    expect(current.expenseMinor).toBe(1500)
+    expect(historical.transactions.map((item) => item.id)).toEqual(['historical-late'])
+    expect(historical.expenseMinor).toBe(3000)
+  })
+
+  it('returns transactions for unclassified and deleted-subcategory report rows', () => {
+    const deletedChild: Category = {
+      id: 'deleted-snack', type: 'expense', parentId: 'food', name: '旧零食', icon: '🍪', color: '#dc2626',
+      sortOrder: 1, isPinned: false, status: 'archived', revision, createdAt: now, updatedAt: now,
+      deletedAt: now, deleteRevision: revision,
+    }
+    const rows = [
+      transaction('unclassified-food', '2026-08-10', 600),
+      transaction('deleted-snack-expense', '2026-08-11', 800, 'expense', { subcategoryId: deletedChild.id }),
+      transaction('unclassified-transport', '2026-08-12', 900, 'expense', { categoryId: 'transport' }),
+    ]
+    const availableCategories = [...expenseCategories, deletedChild]
+    const report = compareExpenseMonthPeriods(
+      rows,
+      availableCategories,
+      '2026-08',
+      '2026-08-14',
+      'to-date',
+    )
+    const foodChildren = report.current.categoryBreakdown.find((row) => row.categoryId === 'food')!.subcategoryBreakdown
+    const unclassifiedRow = foodChildren.find((row) => row.name === '未细分类')!
+    const deletedRow = foodChildren.find((row) => row.name === '已删除小类')!
+
+    const unclassified = buildExpenseSubcategoryDetails(
+      rows,
+      availableCategories,
+      { view: 'month', yearMonth: '2026-08', asOfDate: '2026-08-14', mode: 'to-date' },
+      'food',
+      unclassifiedRow.categoryId,
+    )
+    const deleted = buildExpenseSubcategoryDetails(
+      rows,
+      availableCategories,
+      { view: 'month', yearMonth: '2026-08', asOfDate: '2026-08-14', mode: 'to-date' },
+      'food',
+      deletedRow.categoryId,
+    )
+
+    expect(unclassified.transactions.map((item) => item.id)).toEqual(['unclassified-food'])
+    expect(unclassified.expenseMinor).toBe(unclassifiedRow.expenseMinor)
+    expect(deleted.transactions.map((item) => item.id)).toEqual(['deleted-snack-expense'])
+    expect(deleted.expenseMinor).toBe(deletedRow.expenseMinor)
+  })
+
+  it('uses the transaction id as a stable tie-breaker for identical dates and times', () => {
+    const details = buildExpenseSubcategoryDetails(
+      [
+        transaction('meal-z', '2026-08-10', 100, 'expense', { subcategoryId: 'meal', occurredLocalTime: '12:00' }),
+        transaction('meal-a', '2026-08-10', 200, 'expense', { subcategoryId: 'meal', occurredLocalTime: '12:00' }),
+      ],
+      expenseCategories,
+      { view: 'month', yearMonth: '2026-08', asOfDate: '2026-08-14', mode: 'to-date' },
+      'food',
+      'meal',
+    )
+
+    expect(details.transactions.map((item) => item.id)).toEqual(['meal-a', 'meal-z'])
+  })
+
+  it('reconciles every visible subcategory row across monthly and annual period modes', () => {
+    const rows = [
+      transaction('aug-meal-early', '2026-08-10', 1200, 'expense', { subcategoryId: 'meal' }),
+      transaction('aug-meal-late', '2026-08-20', 2300, 'expense', { subcategoryId: 'meal' }),
+      transaction('aug-direct', '2026-08-11', 400),
+      transaction('aug-moved-bus', '2026-08-12', 500, 'expense', { categoryId: 'food', subcategoryId: 'bus' }),
+      transaction('jul-meal', '2026-07-31', 700, 'expense', { subcategoryId: 'meal' }),
+      transaction('historical-meal', '2025-12-20', 900, 'expense', { subcategoryId: 'meal' }),
+    ]
+    const periodCases: Array<{
+      name: string
+      period: ExpenseStatsPeriod
+      report: ExpensePeriodReport
+      expectedIds: Record<string, string[]>
+    }> = [
+      {
+        name: 'current month to date',
+        period: { view: 'month', yearMonth: '2026-08', asOfDate: '2026-08-14', mode: 'to-date' },
+        report: compareExpenseMonthPeriods(rows, expenseCategories, '2026-08', '2026-08-14', 'to-date').current,
+        expectedIds: {
+          'food|meal': ['aug-meal-early'],
+          'food|__unclassified__:food': ['aug-direct'],
+          'transport|bus': ['aug-moved-bus'],
+        },
+      },
+      {
+        name: 'complete current month',
+        period: { view: 'month', yearMonth: '2026-08', asOfDate: '2026-08-14', mode: 'full-month' },
+        report: compareExpenseMonthPeriods(rows, expenseCategories, '2026-08', '2026-08-14', 'full-month').current,
+        expectedIds: {
+          'food|meal': ['aug-meal-late', 'aug-meal-early'],
+          'food|__unclassified__:food': ['aug-direct'],
+          'transport|bus': ['aug-moved-bus'],
+        },
+      },
+      {
+        name: 'complete historical month',
+        period: { view: 'month', yearMonth: '2026-07', asOfDate: '2026-08-14', mode: 'full-month' },
+        report: compareExpenseMonthPeriods(rows, expenseCategories, '2026-07', '2026-08-14', 'full-month').current,
+        expectedIds: { 'food|meal': ['jul-meal'] },
+      },
+      {
+        name: 'current year to date',
+        period: { view: 'year', year: 2026, asOfDate: '2026-08-14' },
+        report: compareExpenseYearPeriods(rows, expenseCategories, 2026, '2026-08-14').current,
+        expectedIds: {
+          'food|meal': ['aug-meal-early', 'jul-meal'],
+          'food|__unclassified__:food': ['aug-direct'],
+          'transport|bus': ['aug-moved-bus'],
+        },
+      },
+      {
+        name: 'complete historical year',
+        period: { view: 'year', year: 2025, asOfDate: '2026-08-14' },
+        report: compareExpenseYearPeriods(rows, expenseCategories, 2025, '2026-08-14').current,
+        expectedIds: { 'food|meal': ['historical-meal'] },
+      },
+    ]
+
+    periodCases.forEach(({ name, period, report, expectedIds }) => {
+      const visibleKeys: string[] = []
+      report.categoryBreakdown.forEach((root) => {
+        root.subcategoryBreakdown.forEach((child) => {
+          const key = `${root.categoryId}|${child.categoryId}`
+          visibleKeys.push(key)
+          const details = buildExpenseSubcategoryDetails(
+            rows,
+            expenseCategories,
+            period,
+            root.categoryId,
+            child.categoryId,
+          )
+          expect(details.transactions.map((item) => item.id), `${name}: ${key} ids`).toEqual(expectedIds[key])
+          expect(details.count, `${name}: ${key} count`).toBe(expectedIds[key]!.length)
+          expect(details.expenseMinor, `${name}: ${key} amount`).toBe(child.expenseMinor)
+        })
+      })
+      expect(visibleKeys.sort(), `${name}: visible rows`).toEqual(Object.keys(expectedIds).sort())
+    })
   })
 })
