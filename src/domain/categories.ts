@@ -10,7 +10,7 @@ interface CategorySeed {
 const DEFAULT_GENESIS_AT = '2026-08-14T00:00:00.000Z'
 const DEFAULT_GENESIS_DEVICE = 'system-defaults-v1'
 
-const expenseSeeds: CategorySeed[] = [
+const legacyExpenseSeeds: CategorySeed[] = [
   { name: '餐饮', icon: '🍜', color: '#F97316', children: ['早餐', '正餐', '外卖', '零食饮料'] },
   { name: '生活缴费', icon: '💡', color: '#EAB308', children: ['水费', '电费', '燃气费', '手机话费', '宽带', '物业费'] },
   { name: '交通出行', icon: '🚇', color: '#0EA5E9', children: ['公交地铁', '打车', '油费', '停车养车'] },
@@ -22,6 +22,12 @@ const expenseSeeds: CategorySeed[] = [
   { name: '人情往来', icon: '🎁', color: '#F43F5E', children: ['红包', '礼物', '孝亲'] },
   { name: '其他', icon: '•••', color: '#64748B' },
 ]
+
+const expenseSeeds: CategorySeed[] = legacyExpenseSeeds.map((seed) =>
+  seed.name === '餐饮'
+    ? { ...seed, children: ['早餐', '正餐', '晚餐', '零食饮料'] }
+    : seed,
+)
 
 const incomeSeeds: CategorySeed[] = [
   { name: '工资', icon: '💼', color: '#16A34A' },
@@ -38,7 +44,7 @@ function defaultId(index: number): string {
   return `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`
 }
 
-export function createDefaultCategories(_now: string, _deviceId: string): Category[] {
+function createCategories(expenseSeedSet: CategorySeed[], incomeSeedSet: CategorySeed[]): Category[] {
   let idCounter = 1
   let revisionCounter = 1
   const categories: Category[] = []
@@ -90,13 +96,17 @@ export function createDefaultCategories(_now: string, _deviceId: string): Catego
     })
   }
 
-  addSeeds('expense', expenseSeeds)
-  addSeeds('income', incomeSeeds)
+  addSeeds('expense', expenseSeedSet)
+  addSeeds('income', incomeSeedSet)
   return categories
 }
 
+export function createDefaultCategories(_now: string, _deviceId: string): Category[] {
+  return createCategories(expenseSeeds, incomeSeeds)
+}
+
 export function normalizeLegacyDefaultCategories(categories: Category[]): Category[] {
-  const canonical = new Map(createDefaultCategories(DEFAULT_GENESIS_AT, DEFAULT_GENESIS_DEVICE).map((item) => [item.id, item]))
+  const canonical = new Map(createCategories(legacyExpenseSeeds, incomeSeeds).map((item) => [item.id, item]))
   const unchangedFields: Array<keyof Category> = [
     'id', 'type', 'parentId', 'name', 'icon', 'color', 'sortOrder', 'isPinned', 'status', 'isSystemDefault',
   ]

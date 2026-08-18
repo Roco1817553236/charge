@@ -84,6 +84,19 @@ describe('import and export', () => {
     expect(restored.settings.monthComparisonMode).toBe('full-month')
   })
 
+  it.each(['外卖', '晚餐'])('preserves the imported food subcategory name %s exactly', (subcategoryName) => {
+    const portableSnapshot: LedgerSnapshot = {
+      ...snapshot,
+      categories: snapshot.categories.map((item) =>
+        item.id === 'lunch' ? { ...item, name: subcategoryName } : item,
+      ),
+    }
+
+    const restored = parsePlainJson(exportPlainJson(portableSnapshot))
+
+    expect(restored.categories.find((item) => item.id === 'lunch')?.name).toBe(subcategoryName)
+  })
+
   it('accepts a plain backup at exactly 16 MiB of UTF-8 and rejects content above the limit', () => {
     const fixtureBytes = encoder.encode(v12PlainFixture).byteLength
     const exactLimit = v12PlainFixture + ' '.repeat(MAX_BACKUP_FILE_BYTES - fixtureBytes)
