@@ -11,6 +11,12 @@ import { mergeSnapshots } from '../../src/domain/snapshots'
 const dbName = 'bookkeeping-migration-test'
 const secondaryDbName = `${dbName}-secondary`
 
+function createLegacyDefaultCategories() {
+  return createDefaultCategories('ignored', 'ignored').map((item) =>
+    item.parentId !== null && item.name === '晚餐' ? { ...item, name: '外卖' } : item,
+  )
+}
+
 describe('database migrations', () => {
   afterEach(async () => {
     await Dexie.delete(dbName)
@@ -77,7 +83,7 @@ describe('database migrations', () => {
         settings: 'id', deviceStates: 'id', syncMetadata: 'id', conflicts: 'id, entityId, createdAt, resolvedAt',
       })
       await legacy.open()
-      const legacyCategories = createDefaultCategories('ignored', 'ignored').map((item) => ({
+      const legacyCategories = createLegacyDefaultCategories().map((item) => ({
         ...item,
         revision: { counter: item.revision.counter, deviceId },
         createdAt: `2026-01-0${deviceId === 'legacy-a' ? '1' : '2'}T00:00:00.000Z`,
@@ -111,6 +117,6 @@ describe('database migrations', () => {
     const merged = mergeSnapshots(first, second, '2026-08-14T01:00:00.000Z')
 
     expect(merged.conflicts).toHaveLength(0)
-    expect(merged.categories).toEqual(createDefaultCategories('ignored', 'ignored'))
+    expect(merged.categories).toEqual(createLegacyDefaultCategories())
   })
 })

@@ -118,7 +118,22 @@ describe('default categories', () => {
     const normalized = normalizeLegacyDefaultCategories(legacy)
 
     expect(normalized[legacyTakeoutIndex]?.name).toBe('外卖')
-    expect(normalized[legacyTakeoutIndex]?.revision.deviceId).toBe('existing-book')
+  })
+
+  it('preserves revision metadata when an existing book already renamed 外卖 to 晚餐', () => {
+    const existing = createDefaultCategories('ignored', 'ignored')
+    const dinnerIndex = existing.findIndex((item) => item.parentId !== null && item.name === '晚餐')
+    expect(dinnerIndex).toBeGreaterThanOrEqual(0)
+
+    existing[dinnerIndex] = {
+      ...existing[dinnerIndex]!,
+      revision: { counter: 99, deviceId: 'existing-book' },
+      updatedAt: '2026-08-17T00:00:00.000Z',
+    }
+
+    const normalized = normalizeLegacyDefaultCategories(existing)
+
+    expect(normalized[dinnerIndex]).toEqual(existing[dinnerIndex])
   })
 })
 
