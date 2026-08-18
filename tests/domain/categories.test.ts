@@ -69,6 +69,14 @@ describe('default categories', () => {
     expect(roots.some((item) => item.type === 'income' && item.name === '工资')).toBe(true)
     expect(roots.filter((item) => item.type === 'expense' && item.isPinned)).toHaveLength(6)
     expect(categories.every((item) => item.parentId === null || roots.some((root) => root.id === item.parentId))).toBe(true)
+
+    const food = roots.find((item) => item.type === 'expense' && item.name === '餐饮')
+    expect(categories.filter((item) => item.parentId === food?.id).map((item) => item.name)).toEqual([
+      '早餐',
+      '正餐',
+      '晚餐',
+      '零食饮料',
+    ])
   })
 
   it('uses one stable genesis payload on every newly joined device', () => {
@@ -93,6 +101,24 @@ describe('default categories', () => {
     expect(normalized[0]?.name).toBe('我改过的餐饮')
     expect(normalized[0]?.revision.deviceId).toBe('legacy-device')
     expect(normalized[1]).toEqual(canonical[1])
+  })
+
+  it('preserves the old 外卖 name in an existing book instead of migrating it to 晚餐', () => {
+    const legacy = createDefaultCategories('ignored', 'ignored')
+    const legacyTakeoutIndex = legacy.findIndex((item) => item.parentId !== null && item.name === '晚餐')
+    expect(legacyTakeoutIndex).toBeGreaterThanOrEqual(0)
+
+    legacy[legacyTakeoutIndex] = {
+      ...legacy[legacyTakeoutIndex]!,
+      name: '外卖',
+      revision: { counter: 99, deviceId: 'existing-book' },
+      updatedAt: '2026-08-17T00:00:00.000Z',
+    }
+
+    const normalized = normalizeLegacyDefaultCategories(legacy)
+
+    expect(normalized[legacyTakeoutIndex]?.name).toBe('外卖')
+    expect(normalized[legacyTakeoutIndex]?.revision.deviceId).toBe('existing-book')
   })
 })
 

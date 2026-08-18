@@ -99,9 +99,9 @@ function onImport(event: Event): void {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>账页改为完全本地运行，不再需要第三方账号或云端配置</li>
-          <li>保留加密与明文 JSON 的导入导出，跨设备由用户手动迁移</li>
-          <li>设置页更精简，原有流水、分类和统计数据保持不变</li>
+          <li>新建账本的餐饮小类调整为早餐、正餐、晚餐、零食饮料</li>
+          <li>已有账本中的分类名称与全部流水保持不变</li>
+          <li>旧版和新版 JSON 都按备份中的原分类名称导入</li>
         </ul>
       </details>
     </section>

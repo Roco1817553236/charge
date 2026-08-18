@@ -11,7 +11,7 @@ const DEFAULT_GENESIS_AT = '2026-08-14T00:00:00.000Z'
 const DEFAULT_GENESIS_DEVICE = 'system-defaults-v1'
 
 const expenseSeeds: CategorySeed[] = [
-  { name: '餐饮', icon: '🍜', color: '#F97316', children: ['早餐', '正餐', '外卖', '零食饮料'] },
+  { name: '餐饮', icon: '🍜', color: '#F97316', children: ['早餐', '正餐', '晚餐', '零食饮料'] },
   { name: '生活缴费', icon: '💡', color: '#EAB308', children: ['水费', '电费', '燃气费', '手机话费', '宽带', '物业费'] },
   { name: '交通出行', icon: '🚇', color: '#0EA5E9', children: ['公交地铁', '打车', '油费', '停车养车'] },
   { name: '购物', icon: '🛍️', color: '#EC4899', children: ['日用品', '服饰', '数码', '美妆'] },
