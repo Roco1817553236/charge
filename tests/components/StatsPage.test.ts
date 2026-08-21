@@ -29,14 +29,18 @@ const transactions = [
 ]
 
 describe('StatsPage', () => {
-  it('focuses the monthly view on expense totals and stacked root/child breakdowns', () => {
+  it('shows monthly income, expense, balance and stacked root/child breakdowns', () => {
     const wrapper = mount(StatsPage, { props: { transactions, categories, asOfDate: '2026-08-14' } })
 
     expect(wrapper.text()).toContain('本月至今')
     expect(wrapper.text()).toContain('¥40.00')
     expect(wrapper.text()).toContain('较上月同期')
-    expect(wrapper.text()).not.toContain('收入')
-    expect(wrapper.text()).not.toContain('结余')
+    expect(wrapper.get('[data-testid="stats-current-income"]').text()).toContain('¥100.00')
+    expect(wrapper.get('[data-testid="stats-current-expense"]').text()).toContain('¥40.00')
+    expect(wrapper.get('[data-testid="stats-current-balance"]').text()).toContain('¥60.00')
+    expect(wrapper.get('[data-testid="stats-income-change"]').text()).toContain('+¥100.00')
+    expect(wrapper.get('[data-testid="stats-expense-change"]').text()).toContain('+¥20.00')
+    expect(wrapper.get('[data-testid="stats-balance-change"]').text()).toContain('+¥80.00')
     expect(wrapper.text()).not.toContain('每日趋势')
 
     const food = wrapper.get('[data-testid="expense-category-food"]')
@@ -49,6 +53,27 @@ describe('StatsPage', () => {
     expect(lunch.text()).toContain('100.0%')
     expect(wrapper.find('[aria-label="支出大类占比图"]').exists()).toBe(true)
     expect(wrapper.find('[aria-label="餐饮小类占比图"]').exists()).toBe(true)
+  })
+
+  it('keeps cashflow totals visible when a period contains only income', () => {
+    const wrapper = mount(StatsPage, {
+      props: { transactions: [tx('income-only', '2026-08-05', 10000, 'income', 'salary')], categories, asOfDate: '2026-08-14' },
+    })
+
+    expect(wrapper.get('[data-testid="stats-current-income"]').text()).toContain('¥100.00')
+    expect(wrapper.get('[data-testid="stats-current-expense"]').text()).toContain('¥0.00')
+    expect(wrapper.get('[data-testid="stats-current-balance"]').text()).toContain('¥100.00')
+    expect(wrapper.text()).toContain('这个期间还没有支出数据')
+  })
+
+  it('shows a negative balance when a period contains only expense', () => {
+    const wrapper = mount(StatsPage, {
+      props: { transactions: [tx('expense-only', '2026-08-05', 2500, 'expense', 'food')], categories, asOfDate: '2026-08-14' },
+    })
+
+    expect(wrapper.get('[data-testid="stats-current-income"]').text()).toContain('¥0.00')
+    expect(wrapper.get('[data-testid="stats-current-expense"]').text()).toContain('¥25.00')
+    expect(wrapper.get('[data-testid="stats-current-balance"]').text()).toContain('-¥25.00')
   })
 
   it('updates only the lower breakdown when another root category is selected', async () => {
@@ -221,13 +246,15 @@ describe('StatsPage', () => {
     expect(wrapper.find('[data-testid="expense-subcategory-transaction-food-current-future"]').exists()).toBe(true)
   })
 
-  it('switches to an expense-only annual view and uses complete historical years', async () => {
+  it('switches to an annual cashflow view and uses complete historical years', async () => {
     const wrapper = mount(StatsPage, { props: { transactions, categories, asOfDate: '2026-08-14' } })
 
     await wrapper.get('[data-testid="stats-year"]').trigger('click')
     expect(wrapper.text()).toContain('2026 年至今')
     expect(wrapper.text()).toContain('2025 年同期')
     expect(wrapper.text()).toContain('¥60.00')
+    expect(wrapper.get('[data-testid="stats-current-income"]').text()).toContain('¥100.00')
+    expect(wrapper.get('[data-testid="stats-current-balance"]').text()).toContain('¥40.00')
     expect(wrapper.text()).not.toContain('年度预测')
     expect(wrapper.text()).not.toContain('12 个月趋势')
 

@@ -231,6 +231,13 @@ describe('expense-focused breakdown reports', () => {
     expect(report.previous.expenseMinor).toBe(1000)
     expect(report.expenseChangeMinor).toBe(2500)
     expect(report.expenseChangeRate).toBe(2.5)
+    expect(report.current.incomeMinor).toBe(50000)
+    expect(report.current.balanceMinor).toBe(46500)
+    expect(report.current.incomeCount).toBe(1)
+    expect(report.previous.incomeMinor).toBe(0)
+    expect(report.incomeChangeMinor).toBe(50000)
+    expect(report.incomeChangeRate).toBeNull()
+    expect(report.balanceChangeMinor).toBe(47500)
 
     const food = report.current.categoryBreakdown.find((row) => row.categoryId === 'food')!
     expect(food.expenseMinor).toBe(3000)
@@ -299,6 +306,10 @@ describe('expense-focused breakdown reports', () => {
     expect(current.previous.expenseMinor).toBe(4000)
     expect(current.currentLabel).toBe('2026 年至今')
     expect(current.previousLabel).toBe('2025 年同期')
+    expect(current.current.incomeMinor).toBe(50000)
+    expect(current.current.balanceMinor).toBe(45500)
+    expect(current.incomeChangeMinor).toBe(50000)
+    expect(current.balanceChangeMinor).toBe(49500)
 
     const historical = compareExpenseYearPeriods(expenseTransactions, expenseCategories, 2025, '2026-08-14')
     expect(historical.current.expenseMinor).toBe(17000)

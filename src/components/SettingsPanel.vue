@@ -99,9 +99,9 @@ function onImport(event: Event): void {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>删除重复的“开始使用”输入，购买日期直接作为日均起算日</li>
-          <li>已有物品与 v1.4.0 JSON 自动兼容，不删除物品或追加成本</li>
-          <li>物品卡片统一显示购买日期，停用和维修/配件费规则保持不变</li>
+          <li>统计页顶部恢复收入、支出和结余，月度与年度都可查看</li>
+          <li>增加收入变化、支出变化和结余变化三项同期比较</li>
+          <li>下方大类、小类支出去向和流水明细保持原样，不恢复趋势图</li>
         </ul>
       </details>
     </section>

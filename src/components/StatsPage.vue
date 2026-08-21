@@ -125,8 +125,8 @@ function percentageLabel(value: number): string {
   return `${(value * 100).toFixed(1)}%`
 }
 
-function rateLabel(rate: number | null): string {
-  if (rate === null) return '上期无支出'
+function rateLabel(rate: number | null, emptyLabel: string): string {
+  if (rate === null) return emptyLabel
   if (rate === 0) return '持平 0%'
   return `${rate > 0 ? '增加' : '减少'} ${Math.abs(rate * 100).toFixed(1)}%`
 }
@@ -184,7 +184,7 @@ function monthTitle(value: string): string {
     <header class="page-header">
       <div>
         <p class="eyebrow">INSIGHTS</p>
-        <h1 id="stats-title">支出去向</h1>
+        <h1 id="stats-title">收支统计</h1>
       </div>
       <div class="view-switch">
         <button data-testid="stats-month" type="button" :class="{ active: view === 'month' }" @click="setView('month')">月度</button>
@@ -208,21 +208,39 @@ function monthTitle(value: string): string {
       <button data-testid="comparison-full-month" type="button" :class="{ active: currentMonthMode === 'full-month' }" @click="setComparisonMode('full-month')">完整月份</button>
     </div>
 
-    <div class="metric-grid">
-      <article class="metric primary">
+    <div class="cashflow-summary">
+      <article data-testid="stats-current-income" class="cashflow-card income">
+        <span>{{ comparison.currentLabel }}收入</span>
+        <strong>{{ formatMinor(comparison.current.incomeMinor) }}</strong>
+        <small>{{ comparison.current.incomeCount }} 笔收入</small>
+      </article>
+      <article data-testid="stats-current-expense" class="cashflow-card expense">
         <span>{{ comparison.currentLabel }}支出</span>
         <strong>{{ formatMinor(comparison.current.expenseMinor) }}</strong>
         <small>{{ comparison.current.count }} 笔支出</small>
       </article>
-      <article class="metric">
-        <span>{{ comparison.previousLabel }}支出</span>
-        <strong>{{ formatMinor(comparison.previous.expenseMinor) }}</strong>
-        <small>比较基准</small>
+      <article data-testid="stats-current-balance" class="cashflow-card balance">
+        <span>{{ comparison.currentLabel }}结余</span>
+        <strong :class="comparison.current.balanceMinor >= 0 ? 'positive' : 'negative'">{{ formatMinor(comparison.current.balanceMinor) }}</strong>
+        <small>收入 − 支出</small>
       </article>
-      <article class="metric">
+    </div>
+
+    <div class="cashflow-changes" :aria-label="`较${comparison.previousLabel}变化`">
+      <article data-testid="stats-income-change" class="change-card">
+        <span>收入变化</span>
+        <strong :class="comparison.incomeChangeMinor >= 0 ? 'positive' : 'negative'">{{ signedAmount(comparison.incomeChangeMinor) }}</strong>
+        <small>较{{ comparison.previousLabel }} {{ formatMinor(comparison.previous.incomeMinor) }} · {{ rateLabel(comparison.incomeChangeRate, '上期无收入') }}</small>
+      </article>
+      <article data-testid="stats-expense-change" class="change-card">
         <span>支出变化</span>
-        <strong :class="{ positive: comparison.expenseChangeMinor <= 0 }">{{ signedAmount(comparison.expenseChangeMinor) }}</strong>
-        <small>较{{ comparison.previousLabel }} {{ rateLabel(comparison.expenseChangeRate) }}</small>
+        <strong :class="comparison.expenseChangeMinor <= 0 ? 'positive' : 'negative'">{{ signedAmount(comparison.expenseChangeMinor) }}</strong>
+        <small>较{{ comparison.previousLabel }} {{ formatMinor(comparison.previous.expenseMinor) }} · {{ rateLabel(comparison.expenseChangeRate, '上期无支出') }}</small>
+      </article>
+      <article data-testid="stats-balance-change" class="change-card">
+        <span>结余变化</span>
+        <strong :class="comparison.balanceChangeMinor >= 0 ? 'positive' : 'negative'">{{ signedAmount(comparison.balanceChangeMinor) }}</strong>
+        <small>较{{ comparison.previousLabel }}结余 {{ formatMinor(comparison.previous.balanceMinor) }}</small>
       </article>
     </div>
 
@@ -363,14 +381,19 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .comparison-mode { display: flex; width: fit-content; gap: 3px; margin: -4px auto 14px; padding: 3px; border-radius: 11px; background: var(--surface-2); }
 .comparison-mode button { padding: 7px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 750; }
 .comparison-mode button.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-soft); }
-.metric-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 10px; margin-bottom: 14px; }
-.metric { display: grid; gap: 6px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-soft); }
-.metric:first-child { grid-row: span 2; align-content: center; }
-.metric span { color: var(--muted); font-size: 11px; font-weight: 700; }
-.metric strong { color: var(--ink); font: 750 clamp(20px, 5.5vw, 32px)/1 var(--font-display); letter-spacing: -.045em; }
-.metric small { color: var(--muted); font-size: 9px; line-height: 1.4; }
-.metric.primary { border-color: color-mix(in srgb, var(--accent) 22%, var(--line)); background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 9%, var(--surface)), var(--surface)); }
-.metric .positive { color: var(--positive); }
+.cashflow-summary, .cashflow-changes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.cashflow-summary { margin-bottom: 9px; }
+.cashflow-changes { margin-bottom: 14px; }
+.cashflow-card, .change-card { display: grid; min-width: 0; gap: 5px; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-soft); }
+.cashflow-card span, .change-card span { color: var(--muted); font-size: 10px; font-weight: 700; }
+.cashflow-card strong { overflow: hidden; color: var(--ink); font: 750 clamp(18px, 4.5vw, 29px)/1 var(--font-display); letter-spacing: -.045em; text-overflow: ellipsis; }
+.cashflow-card small, .change-card small { overflow: hidden; color: var(--muted); font-size: 8px; line-height: 1.4; text-overflow: ellipsis; }
+.cashflow-card.expense { border-color: color-mix(in srgb, var(--accent) 22%, var(--line)); background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 9%, var(--surface)), var(--surface)); }
+.cashflow-card.income { border-color: color-mix(in srgb, var(--positive) 20%, var(--line)); }
+.change-card { padding: 11px 13px; border-radius: 15px; box-shadow: none; }
+.change-card strong { overflow: hidden; color: var(--ink); font-size: clamp(14px, 3.5vw, 20px); text-overflow: ellipsis; }
+.positive { color: var(--positive) !important; }
+.negative { color: var(--danger) !important; }
 .chart-card { margin-top: 14px; padding: 17px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-soft); }
 .chart-card > header { display: flex; align-items: start; justify-content: space-between; margin-bottom: 15px; }
 .chart-card header > div { display: grid; gap: 3px; }
@@ -405,6 +428,6 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .subcategory-transaction > strong { color: var(--danger); font-size: 11px; white-space: nowrap; }
 .chart-empty { display: grid; min-height: 240px; place-content: center; place-items: center; gap: 7px; margin-top: 14px; padding: 28px; border: 1px dashed var(--line); border-radius: 22px; background: var(--surface); color: var(--muted); text-align: center; }
 .chart-empty > span { font-size: 34px; }.chart-empty strong { color: var(--ink); font-size: 13px; }.chart-empty p { margin: 0; font-size: 10px; }
-@media (min-width: 700px) { .stats-page { padding-top: 36px; }.metric-grid { grid-template-columns: repeat(3, 1fr); }.metric:first-child { grid-row: auto; }.category-layout { grid-template-columns: 160px minmax(0, 1fr); }.donut { width: 145px; height: 145px; }.donut::after { inset: 29px; } }
-@media (max-width: 520px) { .category-layout { grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }.donut { width: 92px; height: 92px; }.donut::after { inset: 18px; }.donut strong { max-width: 62px; font-size: 10px; }.breakdown-list button, .breakdown-row { grid-template-columns: 7px minmax(36px, 1fr) auto auto; gap: 4px; padding: 7px 3px; font-size: 9px; }.breakdown-list strong, .breakdown-list small { font-size: 8px; }.subcategory-transaction { grid-template-columns: 78px minmax(0, 1fr) auto; gap: 7px; }.subcategory-transaction time, .transaction-note, .subcategory-transaction > strong { font-size: 9px; } }
+@media (min-width: 700px) { .stats-page { padding-top: 36px; }.category-layout { grid-template-columns: 160px minmax(0, 1fr); }.donut { width: 145px; height: 145px; }.donut::after { inset: 29px; } }
+@media (max-width: 520px) { .cashflow-card, .change-card { padding: 10px 8px; border-radius: 14px; }.cashflow-card span, .change-card span { font-size: 8px; }.cashflow-card strong { font-size: clamp(16px, 5vw, 21px); }.cashflow-card small, .change-card small { font-size: 7px; }.category-layout { grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }.donut { width: 92px; height: 92px; }.donut::after { inset: 18px; }.donut strong { max-width: 62px; font-size: 10px; }.breakdown-list button, .breakdown-row { grid-template-columns: 7px minmax(36px, 1fr) auto auto; gap: 4px; padding: 7px 3px; font-size: 9px; }.breakdown-list strong, .breakdown-list small { font-size: 8px; }.subcategory-transaction { grid-template-columns: 78px minmax(0, 1fr) auto; gap: 7px; }.subcategory-transaction time, .transaction-note, .subcategory-transaction > strong { font-size: 9px; } }
 </style>

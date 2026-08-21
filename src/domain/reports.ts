@@ -29,7 +29,10 @@ export interface ExpenseCategoryTotal extends CategoryTotal {
 
 export interface ExpensePeriodReport {
   expenseMinor: number
+  incomeMinor: number
+  balanceMinor: number
   count: number
+  incomeCount: number
   categoryBreakdown: ExpenseCategoryTotal[]
 }
 
@@ -38,6 +41,9 @@ export interface ExpensePeriodComparison {
   previous: ExpensePeriodReport
   expenseChangeMinor: number
   expenseChangeRate: number | null
+  incomeChangeMinor: number
+  incomeChangeRate: number | null
+  balanceChangeMinor: number
   currentLabel: string
   previousLabel: string
 }
@@ -254,9 +260,11 @@ function buildExpenseReportBetween(
     categories.filter((category) => !category.deletedAt).map((category) => [category.id, category]),
   )
   const subcategoryChartColors = buildSubcategoryChartColors(categories)
-  const rows = activeTransactions(transactions).filter(
-    (transaction) => transaction.type === 'expense' && inRange(transaction.occurredLocalDate, startDate, endDate),
+  const periodRows = activeTransactions(transactions).filter(
+    (transaction) => inRange(transaction.occurredLocalDate, startDate, endDate),
   )
+  const rows = periodRows.filter((transaction) => transaction.type === 'expense')
+  const incomeRows = periodRows.filter((transaction) => transaction.type === 'income')
   const rootAmounts = new Map<string, number>()
   const childAmounts = new Map<string, Map<string, { name: string; color: string; expenseMinor: number }>>()
 
@@ -282,6 +290,7 @@ function buildExpenseReportBetween(
   })
 
   const expenseMinor = rows.reduce((sum, transaction) => sum + transaction.amountMinor, 0)
+  const incomeMinor = incomeRows.reduce((sum, transaction) => sum + transaction.amountMinor, 0)
   const categoryBreakdown = [...rootAmounts.entries()]
     .map(([categoryId, rootExpenseMinor]) => {
       const root = categoryMap.get(categoryId)
@@ -305,7 +314,14 @@ function buildExpenseReportBetween(
     })
     .sort((left, right) => right.expenseMinor - left.expenseMinor)
 
-  return { expenseMinor, count: rows.length, categoryBreakdown }
+  return {
+    expenseMinor,
+    incomeMinor,
+    balanceMinor: incomeMinor - expenseMinor,
+    count: rows.length,
+    incomeCount: incomeRows.length,
+    categoryBreakdown,
+  }
 }
 
 function buildMonthlyReportBetween(
@@ -387,6 +403,9 @@ function expenseComparison(
     previous,
     expenseChangeMinor: current.expenseMinor - previous.expenseMinor,
     expenseChangeRate: changeRate(current.expenseMinor, previous.expenseMinor),
+    incomeChangeMinor: current.incomeMinor - previous.incomeMinor,
+    incomeChangeRate: changeRate(current.incomeMinor, previous.incomeMinor),
+    balanceChangeMinor: current.balanceMinor - previous.balanceMinor,
     currentLabel,
     previousLabel,
   }
