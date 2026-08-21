@@ -87,6 +87,18 @@ const SUBCATEGORY_CHART_PALETTE = [
 const UNCLASSIFIED_CHART_COLOR = '#64748B'
 const MISSING_SUBCATEGORY_CHART_COLOR = '#94A3B8'
 
+function safeMoneyAdd(left: number, right: number): number {
+  const result = left + right
+  if (!Number.isSafeInteger(result)) throw new Error('统计金额过大')
+  return result
+}
+
+function safeMoneySubtract(left: number, right: number): number {
+  const result = left - right
+  if (!Number.isSafeInteger(result)) throw new Error('统计金额过大')
+  return result
+}
+
 function subcategoryChartColor(index: number): string {
   if (index < SUBCATEGORY_CHART_PALETTE.length) return SUBCATEGORY_CHART_PALETTE[index]!
   const generatedIndex = index - SUBCATEGORY_CHART_PALETTE.length
@@ -220,24 +232,24 @@ export function buildExpenseSubcategoryDetails(
     ))
   return {
     transactions: rows,
-    expenseMinor: rows.reduce((sum, transaction) => sum + transaction.amountMinor, 0),
+    expenseMinor: rows.reduce((sum, transaction) => safeMoneyAdd(sum, transaction.amountMinor), 0),
     count: rows.length,
   }
 }
 
 function totalsFor(transactions: Transaction[]): PeriodTotals {
   const expenseMinor = transactions.reduce(
-    (total, transaction) => total + (transaction.type === 'expense' ? transaction.amountMinor : 0),
+    (total, transaction) => safeMoneyAdd(total, transaction.type === 'expense' ? transaction.amountMinor : 0),
     0,
   )
   const incomeMinor = transactions.reduce(
-    (total, transaction) => total + (transaction.type === 'income' ? transaction.amountMinor : 0),
+    (total, transaction) => safeMoneyAdd(total, transaction.type === 'income' ? transaction.amountMinor : 0),
     0,
   )
   return {
     expenseMinor,
     incomeMinor,
-    balanceMinor: incomeMinor - expenseMinor,
+    balanceMinor: safeMoneySubtract(incomeMinor, expenseMinor),
     count: transactions.length,
   }
 }
@@ -278,19 +290,19 @@ function buildExpenseReportBetween(
       ? subcategoryChartColors.get(selectedChild!.id) ?? MISSING_SUBCATEGORY_CHART_COLOR
       : transaction.subcategoryId ? MISSING_SUBCATEGORY_CHART_COLOR : UNCLASSIFIED_CHART_COLOR
 
-    rootAmounts.set(rootId, (rootAmounts.get(rootId) ?? 0) + transaction.amountMinor)
+    rootAmounts.set(rootId, safeMoneyAdd(rootAmounts.get(rootId) ?? 0, transaction.amountMinor))
     const children = childAmounts.get(rootId) ?? new Map()
     const currentChild = children.get(childId)
     children.set(childId, {
       name: currentChild?.name ?? childName,
       color: currentChild?.color ?? childColor,
-      expenseMinor: (currentChild?.expenseMinor ?? 0) + transaction.amountMinor,
+      expenseMinor: safeMoneyAdd(currentChild?.expenseMinor ?? 0, transaction.amountMinor),
     })
     childAmounts.set(rootId, children)
   })
 
-  const expenseMinor = rows.reduce((sum, transaction) => sum + transaction.amountMinor, 0)
-  const incomeMinor = incomeRows.reduce((sum, transaction) => sum + transaction.amountMinor, 0)
+  const expenseMinor = rows.reduce((sum, transaction) => safeMoneyAdd(sum, transaction.amountMinor), 0)
+  const incomeMinor = incomeRows.reduce((sum, transaction) => safeMoneyAdd(sum, transaction.amountMinor), 0)
   const categoryBreakdown = [...rootAmounts.entries()]
     .map(([categoryId, rootExpenseMinor]) => {
       const root = categoryMap.get(categoryId)
@@ -317,7 +329,7 @@ function buildExpenseReportBetween(
   return {
     expenseMinor,
     incomeMinor,
-    balanceMinor: incomeMinor - expenseMinor,
+    balanceMinor: safeMoneySubtract(incomeMinor, expenseMinor),
     count: rows.length,
     incomeCount: incomeRows.length,
     categoryBreakdown,
@@ -346,12 +358,12 @@ function buildMonthlyReportBetween(
     const day = Number(transaction.occurredLocalDate.slice(-2))
     const daily = days[day - 1]
     if (daily) {
-      if (transaction.type === 'expense') daily.expenseMinor += transaction.amountMinor
-      else daily.incomeMinor += transaction.amountMinor
+      if (transaction.type === 'expense') daily.expenseMinor = safeMoneyAdd(daily.expenseMinor, transaction.amountMinor)
+      else daily.incomeMinor = safeMoneyAdd(daily.incomeMinor, transaction.amountMinor)
     }
     if (transaction.type === 'expense') {
       const rootId = resolvedRootId(transaction, categoryMap)
-      categoryAmounts.set(rootId, (categoryAmounts.get(rootId) ?? 0) + transaction.amountMinor)
+      categoryAmounts.set(rootId, safeMoneyAdd(categoryAmounts.get(rootId) ?? 0, transaction.amountMinor))
     }
   })
 
@@ -389,7 +401,7 @@ function previousMonth(yearMonth: string): string {
 
 function changeRate(current: number, previous: number): number | null {
   if (previous === 0) return null
-  return Math.round(((current - previous) / previous) * 10_000) / 10_000
+  return Math.round((safeMoneySubtract(current, previous) / previous) * 10_000) / 10_000
 }
 
 function expenseComparison(
@@ -401,11 +413,11 @@ function expenseComparison(
   return {
     current,
     previous,
-    expenseChangeMinor: current.expenseMinor - previous.expenseMinor,
+    expenseChangeMinor: safeMoneySubtract(current.expenseMinor, previous.expenseMinor),
     expenseChangeRate: changeRate(current.expenseMinor, previous.expenseMinor),
-    incomeChangeMinor: current.incomeMinor - previous.incomeMinor,
+    incomeChangeMinor: safeMoneySubtract(current.incomeMinor, previous.incomeMinor),
     incomeChangeRate: changeRate(current.incomeMinor, previous.incomeMinor),
-    balanceChangeMinor: current.balanceMinor - previous.balanceMinor,
+    balanceChangeMinor: safeMoneySubtract(current.balanceMinor, previous.balanceMinor),
     currentLabel,
     previousLabel,
   }

@@ -211,7 +211,7 @@ function monthTitle(value: string): string {
     <div class="cashflow-summary">
       <article data-testid="stats-current-income" class="cashflow-card income">
         <span>{{ comparison.currentLabel }}收入</span>
-        <strong>{{ formatMinor(comparison.current.incomeMinor) }}</strong>
+        <strong class="positive">{{ formatMinor(comparison.current.incomeMinor) }}</strong>
         <small>{{ comparison.current.incomeCount }} 笔收入</small>
       </article>
       <article data-testid="stats-current-expense" class="cashflow-card expense">
@@ -386,12 +386,12 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .cashflow-changes { margin-bottom: 14px; }
 .cashflow-card, .change-card { display: grid; min-width: 0; gap: 5px; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-soft); }
 .cashflow-card span, .change-card span { color: var(--muted); font-size: 10px; font-weight: 700; }
-.cashflow-card strong { overflow: hidden; color: var(--ink); font: 750 clamp(18px, 4.5vw, 29px)/1 var(--font-display); letter-spacing: -.045em; text-overflow: ellipsis; }
+.cashflow-card strong { color: var(--ink); font: 750 clamp(18px, 4.5vw, 29px)/1.1 var(--font-display); letter-spacing: -.045em; white-space: nowrap; }
 .cashflow-card small, .change-card small { overflow: hidden; color: var(--muted); font-size: 8px; line-height: 1.4; text-overflow: ellipsis; }
 .cashflow-card.expense { border-color: color-mix(in srgb, var(--accent) 22%, var(--line)); background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 9%, var(--surface)), var(--surface)); }
 .cashflow-card.income { border-color: color-mix(in srgb, var(--positive) 20%, var(--line)); }
 .change-card { padding: 11px 13px; border-radius: 15px; box-shadow: none; }
-.change-card strong { overflow: hidden; color: var(--ink); font-size: clamp(14px, 3.5vw, 20px); text-overflow: ellipsis; }
+.change-card strong { color: var(--ink); font-size: clamp(14px, 3.5vw, 20px); line-height: 1.15; white-space: nowrap; }
 .positive { color: var(--positive) !important; }
 .negative { color: var(--danger) !important; }
 .chart-card { margin-top: 14px; padding: 17px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-soft); }
@@ -429,5 +429,5 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .chart-empty { display: grid; min-height: 240px; place-content: center; place-items: center; gap: 7px; margin-top: 14px; padding: 28px; border: 1px dashed var(--line); border-radius: 22px; background: var(--surface); color: var(--muted); text-align: center; }
 .chart-empty > span { font-size: 34px; }.chart-empty strong { color: var(--ink); font-size: 13px; }.chart-empty p { margin: 0; font-size: 10px; }
 @media (min-width: 700px) { .stats-page { padding-top: 36px; }.category-layout { grid-template-columns: 160px minmax(0, 1fr); }.donut { width: 145px; height: 145px; }.donut::after { inset: 29px; } }
-@media (max-width: 520px) { .cashflow-card, .change-card { padding: 10px 8px; border-radius: 14px; }.cashflow-card span, .change-card span { font-size: 8px; }.cashflow-card strong { font-size: clamp(16px, 5vw, 21px); }.cashflow-card small, .change-card small { font-size: 7px; }.category-layout { grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }.donut { width: 92px; height: 92px; }.donut::after { inset: 18px; }.donut strong { max-width: 62px; font-size: 10px; }.breakdown-list button, .breakdown-row { grid-template-columns: 7px minmax(36px, 1fr) auto auto; gap: 4px; padding: 7px 3px; font-size: 9px; }.breakdown-list strong, .breakdown-list small { font-size: 8px; }.subcategory-transaction { grid-template-columns: 78px minmax(0, 1fr) auto; gap: 7px; }.subcategory-transaction time, .transaction-note, .subcategory-transaction > strong { font-size: 9px; } }
+@media (max-width: 520px) { .cashflow-summary, .cashflow-changes { grid-template-columns: repeat(2, minmax(0, 1fr)); }.cashflow-card.balance, .change-card:last-child { grid-column: 1 / -1; }.cashflow-card, .change-card { padding: 10px 9px; border-radius: 14px; }.cashflow-card span, .change-card span { font-size: 9px; }.cashflow-card strong { font-size: clamp(18px, 5.5vw, 23px); }.cashflow-card small, .change-card small { font-size: 8px; }.category-layout { grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }.donut { width: 92px; height: 92px; }.donut::after { inset: 18px; }.donut strong { max-width: 62px; font-size: 10px; }.breakdown-list button, .breakdown-row { grid-template-columns: 7px minmax(36px, 1fr) auto auto; gap: 4px; padding: 7px 3px; font-size: 9px; }.breakdown-list strong, .breakdown-list small { font-size: 8px; }.subcategory-transaction { grid-template-columns: 78px minmax(0, 1fr) auto; gap: 7px; }.subcategory-transaction time, .transaction-note, .subcategory-transaction > strong { font-size: 9px; } }
 </style>

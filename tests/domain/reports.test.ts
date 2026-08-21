@@ -318,6 +318,18 @@ describe('expense-focused breakdown reports', () => {
     expect(historical.previousLabel).toBe('2024 年')
   })
 
+  it('rejects unsafe cashflow totals and balance changes instead of losing integer precision', () => {
+    expect(() => compareExpenseMonthPeriods([
+      transaction('income-max', '2026-08-01', Number.MAX_SAFE_INTEGER, 'income'),
+      transaction('income-overflow', '2026-08-02', 2, 'income'),
+    ], expenseCategories, '2026-08', '2026-08-14', 'to-date')).toThrow('统计金额过大')
+
+    expect(() => compareExpenseMonthPeriods([
+      transaction('current-income-max', '2026-08-01', Number.MAX_SAFE_INTEGER, 'income'),
+      transaction('previous-expense-max', '2026-07-01', Number.MAX_SAFE_INTEGER, 'expense'),
+    ], expenseCategories, '2026-08', '2026-08-14', 'to-date')).toThrow('统计金额过大')
+  })
+
   it('returns current month-to-date transactions for a real subcategory in reverse chronological order', () => {
     const details = buildExpenseSubcategoryDetails(
       [

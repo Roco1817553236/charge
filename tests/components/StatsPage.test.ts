@@ -36,6 +36,7 @@ describe('StatsPage', () => {
     expect(wrapper.text()).toContain('¥40.00')
     expect(wrapper.text()).toContain('较上月同期')
     expect(wrapper.get('[data-testid="stats-current-income"]').text()).toContain('¥100.00')
+    expect(wrapper.get('[data-testid="stats-current-income"]').get('strong').classes()).toContain('positive')
     expect(wrapper.get('[data-testid="stats-current-expense"]').text()).toContain('¥40.00')
     expect(wrapper.get('[data-testid="stats-current-balance"]').text()).toContain('¥60.00')
     expect(wrapper.get('[data-testid="stats-income-change"]').text()).toContain('+¥100.00')
