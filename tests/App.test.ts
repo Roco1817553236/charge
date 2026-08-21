@@ -1,11 +1,12 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { nextTick } from 'vue'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../src/App.vue'
 import type { Category, Transaction } from '../src/domain/models'
 import { MAX_BACKUP_FILE_BYTES } from '../src/services/importExport'
 import { setBookRepository, useBookStore, type BookRepository } from '../src/stores/bookStore'
+import { setItemRepository, type ItemRepository } from '../src/stores/itemStore'
 
 const now = '2026-08-14T00:00:00.000Z'
 const category: Category = {
@@ -29,10 +30,23 @@ function repository(): BookRepository {
   }
 }
 
+function itemRepository(): ItemRepository {
+  return {
+    initialize: vi.fn().mockResolvedValue(undefined), listItemCategories: vi.fn().mockResolvedValue([]),
+    listItems: vi.fn().mockResolvedValue([]), listItemCosts: vi.fn().mockResolvedValue([]), listTransactions: vi.fn().mockResolvedValue([]),
+    saveItem: vi.fn(), saveItemCost: vi.fn(), retireItem: vi.fn(), restoreItemUse: vi.fn(), softDeleteItem: vi.fn(),
+    restoreItem: vi.fn(), softDeleteItemCost: vi.fn(), restoreItemCost: vi.fn(), saveItemCategory: vi.fn(), removeItemCategory: vi.fn(),
+  }
+}
+
 describe('App', () => {
+  beforeEach(() => setItemRepository(itemRepository()))
+
   it('starts on quick entry, saves locally, and keeps tab navigation available', async () => {
     const repo = repository()
+    const itemsRepo = itemRepository()
     setBookRepository(repo)
+    setItemRepository(itemsRepo)
     const wrapper = mount(App, { global: { plugins: [createPinia()] } })
     await flushPromises()
 
@@ -46,6 +60,12 @@ describe('App', () => {
 
     await wrapper.get('[data-testid="nav-ledger"]').trigger('click')
     expect(wrapper.get('[data-testid="nav-ledger"]').attributes('aria-current')).toBe('page')
+
+    await wrapper.get('[data-testid="nav-items"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="nav-items"]').attributes('aria-current')).toBe('page')
+    expect(wrapper.text()).toContain('物品日均')
+    expect(itemsRepo.listTransactions).toHaveBeenCalledTimes(2)
 
     await wrapper.get('button[aria-label="打开设置与备份"]').trigger('click')
     expect(wrapper.text()).toContain('设置与备份')

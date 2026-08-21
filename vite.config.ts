@@ -13,7 +13,7 @@ export default defineConfig({
       manifest: {
         name: '个人记账',
         short_name: '记账',
-        description: '本地保存、支持加密 JSON 备份的个人记账应用',
+        description: '本地保存、支持物品日均成本和加密 JSON 备份的个人记账应用',
         lang: 'zh-CN',
         start_url: './#/entry',
         scope: './',

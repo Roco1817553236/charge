@@ -4,6 +4,7 @@ import {
   normalizeLegacyDefaultCategories,
   validateCategorySelection,
 } from '../domain/categories'
+import { createDefaultItemCategories } from '../domain/itemCategories'
 import { compareRevision, revisionClock } from '../domain/merge'
 import { mergeSnapshots } from '../domain/snapshots'
 import type {
@@ -11,7 +12,11 @@ import type {
   Category,
   ConflictRecord,
   DeviceState,
+  ItemCategory,
+  ItemCost,
+  ItemCostType,
   LedgerSnapshot,
+  OwnedItem,
   Revision,
   SyncMetadata,
   Transaction,
@@ -52,6 +57,38 @@ export interface SaveCategoryInput {
   isPinned: boolean
   sortOrder?: number
   status?: Category['status']
+}
+
+export interface SaveItemCategoryInput {
+  id?: string
+  name: string
+  icon: string
+  color: string
+  sortOrder?: number
+  status?: ItemCategory['status']
+}
+
+export interface SaveItemInput {
+  id?: string
+  categoryId: string
+  name: string
+  icon: string
+  note: string
+  purchaseAmountMinor: number
+  purchaseLocalDate: string
+  startedLocalDate: string
+  retiredLocalDate?: string
+  sourceTransactionId: string | null
+}
+
+export interface SaveItemCostInput {
+  id?: string
+  itemId: string
+  type: ItemCostType
+  amountMinor: number
+  occurredLocalDate: string
+  note: string
+  sourceTransactionId: string | null
 }
 
 interface RepositoryDependencies {
@@ -95,7 +132,7 @@ export class LocalRepository {
       await this.db.open()
       await this.db.transaction(
         'rw',
-        [this.db.categories, this.db.settings, this.db.deviceStates, this.db.syncMetadata],
+        [this.db.categories, this.db.itemCategories, this.db.settings, this.db.deviceStates, this.db.syncMetadata],
         async () => {
           const now = this.dependencies.now()
           const existingCategories = await this.db.categories.toArray()
@@ -106,6 +143,10 @@ export class LocalRepository {
             const normalized = normalizeLegacyDefaultCategories(existingCategories)
             const changed = normalized.filter((item, index) => item !== existingCategories[index])
             if (changed.length > 0) await this.db.categories.bulkPut(changed)
+          }
+
+          if ((await this.db.itemCategories.count()) === 0) {
+            await this.db.itemCategories.bulkAdd(createDefaultItemCategories())
           }
 
           if (!(await this.db.deviceStates.get(this.deviceId))) {
@@ -138,6 +179,226 @@ export class LocalRepository {
       .filter((category) => !category.deletedAt)
       .filter((category) => (!type || category.type === type) && (includeArchived || category.status === 'active'))
       .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, 'zh-CN'))
+  }
+
+  async listItemCategories(includeArchived = false): Promise<ItemCategory[]> {
+    const categories = await this.db.itemCategories.toArray()
+    return categories
+      .filter((category) => !category.deletedAt && (includeArchived || category.status === 'active'))
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, 'zh-CN'))
+  }
+
+  async saveItemCategory(input: SaveItemCategoryInput): Promise<ItemCategory> {
+    return this.db.transaction(
+      'rw',
+      [this.db.itemCategories, this.db.items, this.db.deviceStates, this.db.syncMetadata],
+      async () => {
+        const name = input.name.trim()
+        if (!name || [...name].length > 40) throw new Error('物品分类名称需为 1 至 40 个字符')
+        const categories = await this.db.itemCategories.toArray()
+        const duplicate = categories.some((category) =>
+          !category.deletedAt && category.id !== input.id && category.name.localeCompare(name, 'zh-CN', { sensitivity: 'accent' }) === 0)
+        if (duplicate) throw new Error('物品分类名称已存在')
+        const existing = input.id ? await this.db.itemCategories.get(input.id) : undefined
+        if (input.id && (!existing || existing.deletedAt)) throw new Error('物品分类不存在')
+        const now = this.dependencies.now()
+        const revision = await this.nextRevision(existing ? [existing.revision] : [])
+        const saved: ItemCategory = {
+          id: existing?.id ?? this.dependencies.uuid(),
+          name,
+          icon: input.icon.trim() || '◇',
+          color: input.color,
+          sortOrder: input.sortOrder ?? existing?.sortOrder ?? categories.filter((item) => !item.deletedAt).length,
+          status: input.status ?? existing?.status ?? 'active',
+          revision,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+          ...(existing?.isSystemDefault === undefined ? {} : { isSystemDefault: existing.isSystemDefault }),
+        }
+        await this.db.itemCategories.put(saved)
+        await this.markPending()
+        return saved
+      },
+    )
+  }
+
+  async removeItemCategory(id: string): Promise<'delete' | 'archive'> {
+    return this.db.transaction(
+      'rw',
+      [this.db.itemCategories, this.db.items, this.db.deviceStates, this.db.syncMetadata],
+      async () => {
+        const category = await this.db.itemCategories.get(id)
+        if (!category || category.deletedAt) throw new Error('物品分类不存在')
+        const revision = await this.nextRevision([category.revision])
+        const now = this.dependencies.now()
+        const referenced = (await this.db.items.where('categoryId').equals(id).count()) > 0
+        if (referenced) {
+          await this.db.itemCategories.put({ ...category, status: 'archived', updatedAt: now, revision })
+          await this.markPending()
+          return 'archive'
+        }
+        await this.db.itemCategories.put({
+          ...category, updatedAt: now, revision, deletedAt: now, deleteRevision: revision,
+        })
+        await this.markPending()
+        return 'delete'
+      },
+    )
+  }
+
+  async listItems(includeDeleted = false): Promise<OwnedItem[]> {
+    return (await this.db.items.toArray())
+      .filter((item) => includeDeleted || !item.deletedAt)
+      .sort((left, right) => right.startedLocalDate.localeCompare(left.startedLocalDate) || left.name.localeCompare(right.name, 'zh-CN'))
+  }
+
+  async saveItem(input: SaveItemInput): Promise<OwnedItem> {
+    return this.db.transaction(
+      'rw',
+      [this.db.items, this.db.itemCategories, this.db.transactions, this.db.deviceStates, this.db.syncMetadata],
+      async () => {
+        const existing = input.id ? await this.db.items.get(input.id) : undefined
+        if (input.id && (!existing || existing.deletedAt)) throw new Error('物品不存在')
+        const category = await this.db.itemCategories.get(input.categoryId)
+        const keepsExistingCategory = Boolean(existing && existing.categoryId === input.categoryId)
+        if (!category || category.deletedAt || (category.status !== 'active' && !keepsExistingCategory)) {
+          throw new Error('请选择有效的物品分类')
+        }
+        await this.validateExpenseSource(
+          input.sourceTransactionId,
+          Boolean(existing && existing.sourceTransactionId === input.sourceTransactionId),
+        )
+        this.validateItemInput(input)
+        const now = this.dependencies.now()
+        const revision = await this.nextRevision(existing ? [existing.revision] : [])
+        const saved: OwnedItem = {
+          id: existing?.id ?? this.dependencies.uuid(),
+          categoryId: input.categoryId,
+          name: input.name.trim(),
+          icon: input.icon.trim() || category.icon,
+          note: input.note.trim(),
+          purchaseAmountMinor: input.purchaseAmountMinor,
+          purchaseLocalDate: input.purchaseLocalDate,
+          startedLocalDate: input.startedLocalDate,
+          ...(input.retiredLocalDate ? { retiredLocalDate: input.retiredLocalDate } : {}),
+          sourceTransactionId: input.sourceTransactionId,
+          revision,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        }
+        await this.db.items.put(saved)
+        await this.markPending()
+        return saved
+      },
+    )
+  }
+
+  async listItemCosts(itemId?: string, includeDeleted = false): Promise<ItemCost[]> {
+    const costs = itemId
+      ? await this.db.itemCosts.where('itemId').equals(itemId).toArray()
+      : await this.db.itemCosts.toArray()
+    return costs
+      .filter((cost) => includeDeleted || !cost.deletedAt)
+      .sort((left, right) => right.occurredLocalDate.localeCompare(left.occurredLocalDate) || right.createdAt.localeCompare(left.createdAt))
+  }
+
+  async saveItemCost(input: SaveItemCostInput): Promise<ItemCost> {
+    return this.db.transaction(
+      'rw',
+      [this.db.itemCosts, this.db.items, this.db.transactions, this.db.deviceStates, this.db.syncMetadata],
+      async () => {
+        const item = await this.db.items.get(input.itemId)
+        if (!item || item.deletedAt) throw new Error('物品不存在')
+        const existing = input.id ? await this.db.itemCosts.get(input.id) : undefined
+        if (input.id && (!existing || existing.deletedAt)) throw new Error('追加成本不存在')
+        if (input.type !== 'repair' && input.type !== 'accessory') throw new Error('追加成本类型无效')
+        if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) throw new Error('金额无效')
+        if (!this.isValidLocalDate(input.occurredLocalDate)) throw new Error('追加成本日期无效')
+        const endDate = item.retiredLocalDate ?? this.currentLocalDate()
+        if (input.occurredLocalDate < item.purchaseLocalDate || input.occurredLocalDate > endDate) {
+          throw new Error('追加成本日期无效')
+        }
+        if ([...input.note].length > 500) throw new Error('备注最多 500 个字符')
+        await this.validateExpenseSource(
+          input.sourceTransactionId,
+          Boolean(existing && existing.sourceTransactionId === input.sourceTransactionId),
+        )
+        const now = this.dependencies.now()
+        const revision = await this.nextRevision(existing ? [existing.revision] : [])
+        const saved: ItemCost = {
+          id: existing?.id ?? this.dependencies.uuid(),
+          itemId: item.id,
+          type: input.type,
+          amountMinor: input.amountMinor,
+          occurredLocalDate: input.occurredLocalDate,
+          note: input.note.trim(),
+          sourceTransactionId: input.sourceTransactionId,
+          revision,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        }
+        await this.db.itemCosts.put(saved)
+        await this.markPending()
+        return saved
+      },
+    )
+  }
+
+  async retireItem(id: string, retiredLocalDate: string): Promise<OwnedItem> {
+    const item = await this.requireItem(id)
+    return this.saveItem({ ...item, retiredLocalDate })
+  }
+
+  async restoreItemUse(id: string): Promise<OwnedItem> {
+    const item = await this.requireItem(id)
+    const { retiredLocalDate: _retiredLocalDate, ...active } = item
+    return this.saveItem(active)
+  }
+
+  async softDeleteItem(id: string): Promise<OwnedItem> {
+    return this.db.transaction('rw', [this.db.items, this.db.deviceStates, this.db.syncMetadata], async () => {
+      const item = await this.requireItem(id)
+      const now = this.dependencies.now()
+      const revision = await this.nextRevision([item.revision])
+      const deleted = { ...item, updatedAt: now, revision, deletedAt: now, deleteRevision: revision }
+      await this.db.items.put(deleted)
+      await this.markPending()
+      return deleted
+    })
+  }
+
+  async restoreItem(id: string): Promise<OwnedItem> {
+    return this.db.transaction('rw', [this.db.items, this.db.deviceStates, this.db.syncMetadata], async () => {
+      const item = await this.requireItem(id, true)
+      const { deletedAt: _deletedAt, deleteRevision: _deleteRevision, ...rest } = item
+      const restored = { ...rest, updatedAt: this.dependencies.now(), revision: await this.nextRevision([item.revision]) }
+      await this.db.items.put(restored)
+      await this.markPending()
+      return restored
+    })
+  }
+
+  async softDeleteItemCost(id: string): Promise<ItemCost> {
+    return this.db.transaction('rw', [this.db.itemCosts, this.db.deviceStates, this.db.syncMetadata], async () => {
+      const cost = await this.requireItemCost(id)
+      const now = this.dependencies.now()
+      const revision = await this.nextRevision([cost.revision])
+      const deleted = { ...cost, updatedAt: now, revision, deletedAt: now, deleteRevision: revision }
+      await this.db.itemCosts.put(deleted)
+      await this.markPending()
+      return deleted
+    })
+  }
+
+  async restoreItemCost(id: string): Promise<ItemCost> {
+    return this.db.transaction('rw', [this.db.itemCosts, this.db.deviceStates, this.db.syncMetadata], async () => {
+      const cost = await this.requireItemCost(id, true)
+      const { deletedAt: _deletedAt, deleteRevision: _deleteRevision, ...rest } = cost
+      const restored = { ...rest, updatedAt: this.dependencies.now(), revision: await this.nextRevision([cost.revision]) }
+      await this.db.itemCosts.put(restored)
+      await this.markPending()
+      return restored
+    })
   }
 
   async addTransaction(input: AddTransactionInput): Promise<Transaction> {
@@ -334,7 +595,10 @@ export class LocalRepository {
   async createSnapshot(): Promise<LedgerSnapshot> {
     return this.db.transaction(
       'r',
-      [this.db.transactions, this.db.categories, this.db.settings, this.db.deviceStates, this.db.conflicts],
+      [
+        this.db.transactions, this.db.categories, this.db.itemCategories, this.db.items, this.db.itemCosts,
+        this.db.settings, this.db.deviceStates, this.db.conflicts,
+      ],
       () => this.readSnapshot(),
     )
   }
@@ -376,6 +640,9 @@ export class LocalRepository {
       [
         this.db.transactions,
         this.db.categories,
+        this.db.itemCategories,
+        this.db.items,
+        this.db.itemCosts,
         this.db.settings,
         this.db.deviceStates,
         this.db.conflicts,
@@ -392,21 +659,27 @@ export class LocalRepository {
   }
 
   private async readSnapshot(): Promise<LedgerSnapshot> {
-    const [transactions, categories, settings, devices, conflicts] = await Promise.all([
+    const [transactions, categories, itemCategories, items, itemCosts, settings, devices, conflicts] = await Promise.all([
       this.db.transactions.toArray(),
       this.db.categories.toArray(),
+      this.db.itemCategories.toArray(),
+      this.db.items.toArray(),
+      this.db.itemCosts.toArray(),
       this.db.settings.get('book'),
       this.db.deviceStates.toArray(),
       this.db.conflicts.toArray(),
     ])
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: this.dependencies.now(),
       transactions,
       categories,
       settings: settings ?? this.defaultBookSettings(),
       devices,
       conflicts,
+      itemCategories,
+      items,
+      itemCosts,
     }
   }
 
@@ -420,6 +693,9 @@ export class LocalRepository {
       [
         this.db.transactions,
         this.db.categories,
+        this.db.itemCategories,
+        this.db.items,
+        this.db.itemCosts,
         this.db.settings,
         this.db.deviceStates,
         this.db.conflicts,
@@ -573,6 +849,9 @@ export class LocalRepository {
       [
         this.db.transactions,
         this.db.categories,
+        this.db.itemCategories,
+        this.db.items,
+        this.db.itemCosts,
         this.db.settings,
         this.db.deviceStates,
         this.db.conflicts,
@@ -590,6 +869,18 @@ export class LocalRepository {
             observed.push(item.revision)
             if (item.deleteRevision) observed.push(item.deleteRevision)
           })
+          ;(value.itemCategories ?? []).forEach((item) => {
+            observed.push(item.revision)
+            if (item.deleteRevision) observed.push(item.deleteRevision)
+          })
+          ;(value.items ?? []).forEach((item) => {
+            observed.push(item.revision)
+            if (item.deleteRevision) observed.push(item.deleteRevision)
+          })
+          ;(value.itemCosts ?? []).forEach((item) => {
+            observed.push(item.revision)
+            if (item.deleteRevision) observed.push(item.deleteRevision)
+          })
           observed.push(value.settings.revision)
           if (value.settings.bookEpoch) observed.push(value.settings.bookEpoch)
         }
@@ -598,7 +889,11 @@ export class LocalRepository {
         const epoch = await this.nextRevision(observed)
         const restored: LedgerSnapshot = {
           ...snapshot,
+          schemaVersion: 2,
           exportedAt: this.dependencies.now(),
+          itemCategories: snapshot.itemCategories ?? createDefaultItemCategories(),
+          items: snapshot.items ?? [],
+          itemCosts: snapshot.itemCosts ?? [],
           settings: {
             ...snapshot.settings,
             revision: epoch,
@@ -621,12 +916,18 @@ export class LocalRepository {
         await Promise.all([
           this.db.transactions.clear(),
           this.db.categories.clear(),
+          this.db.itemCategories.clear(),
+          this.db.items.clear(),
+          this.db.itemCosts.clear(),
           this.db.settings.clear(),
           this.db.deviceStates.clear(),
           this.db.conflicts.clear(),
         ])
         await this.db.transactions.bulkPut(restored.transactions)
         await this.db.categories.bulkPut(restored.categories)
+        await this.db.itemCategories.bulkPut(restored.itemCategories!)
+        await this.db.items.bulkPut(restored.items!)
+        await this.db.itemCosts.bulkPut(restored.itemCosts!)
         await this.db.settings.put(restored.settings)
         await this.db.deviceStates.bulkPut([...deviceMap.values()])
         if ((restored.conflicts?.length ?? 0) > 0) await this.db.conflicts.bulkPut(restored.conflicts!)
@@ -682,6 +983,63 @@ export class LocalRepository {
     const timeParts = /^(\d{2}):(\d{2})$/.exec(input.occurredLocalTime)?.slice(1).map(Number)
     if (!timeParts || timeParts[0]! > 23 || timeParts[1]! > 59) throw new Error('时间无效')
     if ([...input.note].length > 500) throw new Error('备注最多 500 个字符')
+  }
+
+  private validateItemInput(input: SaveItemInput): void {
+    const name = input.name.trim()
+    if (!name || [...name].length > 100) throw new Error('物品名称需为 1 至 100 个字符')
+    if (!Number.isSafeInteger(input.purchaseAmountMinor) || input.purchaseAmountMinor < 0) throw new Error('金额无效')
+    if ([...input.note].length > 500) throw new Error('备注最多 500 个字符')
+    const today = this.currentLocalDate()
+    if (
+      !this.isValidLocalDate(input.purchaseLocalDate) ||
+      !this.isValidLocalDate(input.startedLocalDate) ||
+      input.purchaseLocalDate > input.startedLocalDate ||
+      input.startedLocalDate > today ||
+      (input.retiredLocalDate && (
+        !this.isValidLocalDate(input.retiredLocalDate) ||
+        input.retiredLocalDate < input.startedLocalDate ||
+        input.retiredLocalDate > today
+      ))
+    ) throw new Error('物品日期无效')
+  }
+
+  private isValidLocalDate(value: string): boolean {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)?.slice(1).map(Number)
+    if (!parts) return false
+    const [year, month, day] = parts
+    const lastDay = month && month >= 1 && month <= 12 ? new Date(Date.UTC(year!, month, 0)).getUTCDate() : 0
+    return Boolean(year && year >= 1 && year <= 9999 && month && day && day <= lastDay)
+  }
+
+  private currentLocalDate(): string {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: this.dependencies.timeZone(), year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date(this.dependencies.now()))
+    const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? ''
+    return `${value('year')}-${value('month')}-${value('day')}`
+  }
+
+  private async validateExpenseSource(id: string | null, allowUnavailable = false): Promise<void> {
+    if (!id) return
+    const source = await this.db.transactions.get(id)
+    if (!source || source.deletedAt) {
+      if (allowUnavailable) return
+      throw new Error('来源流水不存在')
+    }
+    if (source.type !== 'expense') throw new Error('来源必须是支出流水')
+  }
+
+  private async requireItem(id: string, includeDeleted = false): Promise<OwnedItem> {
+    const item = await this.db.items.get(id)
+    if (!item || (!includeDeleted && item.deletedAt)) throw new Error('物品不存在')
+    return item
+  }
+
+  private async requireItemCost(id: string, includeDeleted = false): Promise<ItemCost> {
+    const cost = await this.db.itemCosts.get(id)
+    if (!cost || (!includeDeleted && cost.deletedAt)) throw new Error('追加成本不存在')
+    return cost
   }
 
   private async nextRevision(observed: Revision[] = []): Promise<Revision> {
@@ -741,10 +1099,14 @@ export class LocalRepository {
       if (backup) {
         const sameIds = <T extends { id: string }>(actual: T[], expected: T[]): boolean =>
           actual.map((item) => item.id).sort().join('\n') === expected.map((item) => item.id).sort().join('\n')
+        const containsIds = <T extends { id: string }>(actual: T[], expected: T[]): boolean => {
+          const actualIds = new Set(actual.map((item) => item.id))
+          return expected.every((item) => actualIds.has(item.id))
+        }
         if (
           !sameIds(transactions, backup.snapshot.transactions) ||
           !sameIds(categories, backup.snapshot.categories) ||
-          !sameIds(devices, backup.snapshot.devices) ||
+          !containsIds(devices, backup.snapshot.devices) ||
           !sameIds(conflicts, backup.snapshot.conflicts ?? [])
         ) throw new Error('数据库迁移完整性自检失败，旧版数据仍保留在独立救援备份中')
       }

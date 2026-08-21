@@ -5,6 +5,7 @@ import {
   prepareDurableMigrationBackup,
   readDurableMigrationBackup,
 } from '../../src/data/database'
+import { LocalRepository } from '../../src/data/localRepository'
 import { createDefaultCategories } from '../../src/domain/categories'
 import { mergeSnapshots } from '../../src/domain/snapshots'
 
@@ -43,7 +44,7 @@ describe('database migrations', () => {
     const upgraded = new BookkeepingDatabase(dbName)
     await upgraded.open()
 
-    expect(upgraded.verno).toBe(2)
+    expect(upgraded.verno).toBe(3)
     expect((await upgraded.settings.get('book'))?.bookEpoch).toEqual(genesis)
     expect((await upgraded.syncMetadata.get('sync'))?.changeGeneration).toBe(0)
     const backup = await upgraded.migrationBackups.get('v1-to-v2')
@@ -118,5 +119,37 @@ describe('database migrations', () => {
 
     expect(merged.conflicts).toHaveLength(0)
     expect(merged.categories).toEqual(createLegacyDefaultCategories())
+  })
+
+  it('backs up and preserves a real v2 ledger before adding item-cost stores', async () => {
+    const legacy = new Dexie(dbName)
+    legacy.version(2).stores({
+      transactions: 'id, occurredLocalDate, type, categoryId, subcategoryId, updatedAt, deletedAt',
+      categories: 'id, type, parentId, status, sortOrder, [type+parentId+status]',
+      settings: 'id', deviceStates: 'id', syncMetadata: 'id', conflicts: 'id, entityId, createdAt, resolvedAt',
+      migrationBackups: 'id, createdAt',
+    })
+    await legacy.open()
+    const category = createDefaultCategories('ignored', 'ignored')[0]!
+    await legacy.table('categories').put(category)
+    await legacy.table('settings').put({
+      id: 'book', currency: 'CNY', monthComparisonMode: 'full-month',
+      revision: { counter: 1, deviceId: 'legacy-v2' }, updatedAt: '2026-08-20T00:00:00.000Z',
+    })
+    legacy.close()
+
+    const repository = new LocalRepository(dbName, 'device-v3')
+    await repository.initialize()
+
+    expect(repository.db.verno).toBe(3)
+    expect((await repository.listCategories(undefined, true)).map((item) => item.id)).toContain(category.id)
+    expect((await repository.getBookSettings()).monthComparisonMode).toBe('full-month')
+    expect(await repository.listItemCategories()).toHaveLength(7)
+    repository.close()
+
+    const backup = await readDurableMigrationBackup(dbName)
+    expect(backup?.fromVersion).toBe(2)
+    expect(backup?.toVersion).toBe(3)
+    expect(backup?.snapshot.categories.map((item) => item.id)).toContain(category.id)
   })
 })

@@ -38,6 +38,25 @@ const snapshot: LedgerSnapshot = {
   devices: [{ id: 'a', logicalCounter: 2 }],
 }
 
+const itemSnapshot: LedgerSnapshot = {
+  ...snapshot,
+  schemaVersion: 2,
+  itemCategories: [{
+    id: 'digital', name: '数码', icon: '💻', color: '#6366F1', sortOrder: 0, status: 'active',
+    revision: { counter: 3, deviceId: 'a' }, createdAt: snapshot.exportedAt, updatedAt: snapshot.exportedAt,
+  }],
+  items: [{
+    id: 'phone', categoryId: 'digital', name: '手机', icon: '📱', note: '', purchaseAmountMinor: 629_900,
+    purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: 'tx-1',
+    revision: { counter: 4, deviceId: 'a' }, createdAt: snapshot.exportedAt, updatedAt: snapshot.exportedAt,
+  }],
+  itemCosts: [{
+    id: 'battery', itemId: 'phone', type: 'repair', amountMinor: 49_900, occurredLocalDate: '2026-08-10',
+    note: '换电池', sourceTransactionId: null, revision: { counter: 5, deviceId: 'a' },
+    createdAt: snapshot.exportedAt, updatedAt: snapshot.exportedAt,
+  }],
+}
+
 describe('import and export', () => {
   it('round-trips a plain portable JSON backup after schema validation', () => {
     expect(parsePlainJson(exportPlainJson(snapshot))).toEqual(snapshot)
@@ -69,6 +88,26 @@ describe('import and export', () => {
     const backup = await exportEncryptedBackup(snapshot, '足够长的备份同步密码', { iterations: 1_000 })
     expect(backup.fileContent).not.toContain('午饭')
     await expect(importEncryptedBackup(backup.fileContent, { password: '足够长的备份同步密码' })).resolves.toEqual(snapshot)
+  })
+
+  it('round-trips schema v2 item data in plain and encrypted backups', async () => {
+    expect(parsePlainJson(exportPlainJson(itemSnapshot))).toEqual(itemSnapshot)
+    const backup = await exportEncryptedBackup(itemSnapshot, '物品备份测试密码足够长', { iterations: 1_000 })
+    await expect(importEncryptedBackup(backup.fileContent, { password: '物品备份测试密码足够长' })).resolves.toEqual(itemSnapshot)
+  })
+
+  it('rejects broken item category and item-cost references', () => {
+    const missingItemCategory = {
+      ...itemSnapshot,
+      items: [{ ...itemSnapshot.items![0]!, categoryId: 'missing' }],
+    }
+    const missingItem = {
+      ...itemSnapshot,
+      itemCosts: [{ ...itemSnapshot.itemCosts![0]!, itemId: 'missing' }],
+    }
+
+    expect(() => parsePlainJson(JSON.stringify(missingItemCategory))).toThrow('备份文件格式无效或版本不受支持')
+    expect(() => parsePlainJson(JSON.stringify(missingItem))).toThrow('备份文件格式无效或版本不受支持')
   })
 
   it('imports fixed v1.2 plain and encrypted backups without dropping legacy data', async () => {

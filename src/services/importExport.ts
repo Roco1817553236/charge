@@ -3,7 +3,10 @@ import type {
   Category,
   ConflictRecord,
   DeviceState,
+  ItemCategory,
+  ItemCost,
   LedgerSnapshot,
+  OwnedItem,
   Revision,
   Transaction,
 } from '../domain/models'
@@ -75,6 +78,49 @@ function isCategory(value: unknown): value is Category {
     (value.deleteRevision === undefined || isRevision(value.deleteRevision))
 }
 
+function isItemCategory(value: unknown): value is ItemCategory {
+  if (!isRecord(value)) return false
+  return typeof value.id === 'string' && typeof value.name === 'string' && [...value.name].length <= 40 &&
+    typeof value.icon === 'string' && typeof value.color === 'string' && Number.isSafeInteger(value.sortOrder) &&
+    (value.status === 'active' || value.status === 'archived') && isRevision(value.revision) &&
+    typeof value.createdAt === 'string' && typeof value.updatedAt === 'string' &&
+    (value.isSystemDefault === undefined || typeof value.isSystemDefault === 'boolean') &&
+    (value.deletedAt === undefined || typeof value.deletedAt === 'string') &&
+    (value.deleteRevision === undefined || isRevision(value.deleteRevision))
+}
+
+function isOwnedItem(value: unknown): value is OwnedItem {
+  if (!isRecord(value)) return false
+  return typeof value.id === 'string' && typeof value.categoryId === 'string' &&
+    typeof value.name === 'string' && [...value.name].length > 0 && [...value.name].length <= 100 &&
+    typeof value.icon === 'string' && typeof value.note === 'string' && [...value.note].length <= 500 &&
+    Number.isSafeInteger(value.purchaseAmountMinor) && Number(value.purchaseAmountMinor) >= 0 &&
+    typeof value.purchaseLocalDate === 'string' && isValidLocalDate(value.purchaseLocalDate) &&
+    typeof value.startedLocalDate === 'string' && isValidLocalDate(value.startedLocalDate) &&
+    value.purchaseLocalDate <= value.startedLocalDate &&
+    (value.retiredLocalDate === undefined || (
+      typeof value.retiredLocalDate === 'string' && isValidLocalDate(value.retiredLocalDate) &&
+      value.retiredLocalDate >= value.startedLocalDate
+    )) &&
+    (value.sourceTransactionId === null || typeof value.sourceTransactionId === 'string') &&
+    isRevision(value.revision) && typeof value.createdAt === 'string' && typeof value.updatedAt === 'string' &&
+    (value.deletedAt === undefined || typeof value.deletedAt === 'string') &&
+    (value.deleteRevision === undefined || isRevision(value.deleteRevision))
+}
+
+function isItemCost(value: unknown): value is ItemCost {
+  if (!isRecord(value)) return false
+  return typeof value.id === 'string' && typeof value.itemId === 'string' &&
+    (value.type === 'repair' || value.type === 'accessory') &&
+    Number.isSafeInteger(value.amountMinor) && Number(value.amountMinor) > 0 &&
+    typeof value.occurredLocalDate === 'string' && isValidLocalDate(value.occurredLocalDate) &&
+    typeof value.note === 'string' && [...value.note].length <= 500 &&
+    (value.sourceTransactionId === null || typeof value.sourceTransactionId === 'string') &&
+    isRevision(value.revision) && typeof value.createdAt === 'string' && typeof value.updatedAt === 'string' &&
+    (value.deletedAt === undefined || typeof value.deletedAt === 'string') &&
+    (value.deleteRevision === undefined || isRevision(value.deleteRevision))
+}
+
 function isSettings(value: unknown): value is BookSettings {
   return isRecord(value) && value.id === 'book' && value.currency === 'CNY' &&
     (value.monthComparisonMode === 'to-date' || value.monthComparisonMode === 'full-month') &&
@@ -97,7 +143,7 @@ function isConflict(value: unknown): value is ConflictRecord {
 }
 
 export function isLedgerSnapshot(value: unknown): value is LedgerSnapshot {
-  if (!isRecord(value) || value.schemaVersion !== 1 || typeof value.exportedAt !== 'string') return false
+  if (!isRecord(value) || (value.schemaVersion !== 1 && value.schemaVersion !== 2) || typeof value.exportedAt !== 'string') return false
   if (!Array.isArray(value.transactions) || !value.transactions.every(isTransaction)) return false
   if (!Array.isArray(value.categories) || !value.categories.every(isCategory)) return false
   if (!Array.isArray(value.devices) || !value.devices.every(isDeviceState) || !isSettings(value.settings)) return false
@@ -121,6 +167,34 @@ export function isLedgerSnapshot(value: unknown): value is LedgerSnapshot {
     if (!transaction.subcategoryId) return false
     const child = categoryMap.get(transaction.subcategoryId)
     return !child || child.parentId !== root.id || child.type !== transaction.type
+  })) return false
+  if (value.schemaVersion === 1) {
+    return value.itemCategories === undefined && value.items === undefined && value.itemCosts === undefined
+  }
+
+  if (!Array.isArray(value.itemCategories) || !value.itemCategories.every(isItemCategory)) return false
+  if (!Array.isArray(value.items) || !value.items.every(isOwnedItem)) return false
+  if (!Array.isArray(value.itemCosts) || !value.itemCosts.every(isItemCost)) return false
+  const itemCategories = value.itemCategories as ItemCategory[]
+  const items = value.items as OwnedItem[]
+  const itemCosts = value.itemCosts as ItemCost[]
+  if (new Set(itemCategories.map((item) => item.id)).size !== itemCategories.length) return false
+  if (new Set(items.map((item) => item.id)).size !== items.length) return false
+  if (new Set(itemCosts.map((item) => item.id)).size !== itemCosts.length) return false
+  const itemCategoryIds = new Set(itemCategories.map((item) => item.id))
+  const itemMap = new Map(items.map((item) => [item.id, item]))
+  const transactionMap = new Map(transactions.map((item) => [item.id, item]))
+  if (items.some((item) => {
+    if (!itemCategoryIds.has(item.categoryId)) return true
+    if (!item.sourceTransactionId) return false
+    return transactionMap.get(item.sourceTransactionId)?.type !== 'expense'
+  })) return false
+  if (itemCosts.some((cost) => {
+    const item = itemMap.get(cost.itemId)
+    if (!item || cost.occurredLocalDate < item.purchaseLocalDate ||
+      (item.retiredLocalDate && cost.occurredLocalDate > item.retiredLocalDate)) return true
+    if (!cost.sourceTransactionId) return false
+    return transactionMap.get(cost.sourceTransactionId)?.type !== 'expense'
   })) return false
   return true
 }
