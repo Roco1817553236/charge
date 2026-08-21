@@ -9,6 +9,9 @@ describe('SwipePager', () => {
       slots: { entry: '<div>记账页</div>', ledger: '<div>流水页</div>', stats: '<div>统计页</div>', items: '<div>物品页</div>' },
     })
     expect(wrapper.get('[data-testid="nav-entry"]').attributes('aria-current')).toBe('page')
+    const pages = wrapper.findAll('.pager-page')
+    expect(pages[0]?.attributes('inert')).toBeUndefined()
+    expect(pages[1]?.attributes()).toHaveProperty('inert')
     await wrapper.get('[data-testid="nav-ledger"]').trigger('click')
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([1])
   })

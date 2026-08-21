@@ -181,7 +181,7 @@ export function isLedgerSnapshot(value: unknown): value is LedgerSnapshot {
   if (new Set(itemCategories.map((item) => item.id)).size !== itemCategories.length) return false
   if (new Set(items.map((item) => item.id)).size !== items.length) return false
   if (new Set(itemCosts.map((item) => item.id)).size !== itemCosts.length) return false
-  const itemCategoryIds = new Set(itemCategories.map((item) => item.id))
+  const itemCategoryIds = new Set(itemCategories.filter((item) => !item.deletedAt).map((item) => item.id))
   const itemMap = new Map(items.map((item) => [item.id, item]))
   const transactionMap = new Map(transactions.map((item) => [item.id, item]))
   if (items.some((item) => {
@@ -195,6 +195,15 @@ export function isLedgerSnapshot(value: unknown): value is LedgerSnapshot {
       (item.retiredLocalDate && cost.occurredLocalDate > item.retiredLocalDate)) return true
     if (!cost.sourceTransactionId) return false
     return transactionMap.get(cost.sourceTransactionId)?.type !== 'expense'
+  })) return false
+  if (items.some((item) => {
+    let total = item.purchaseAmountMinor
+    for (const cost of itemCosts) {
+      if (cost.itemId !== item.id || cost.deletedAt) continue
+      total += cost.amountMinor
+      if (!Number.isSafeInteger(total)) return true
+    }
+    return false
   })) return false
   return true
 }

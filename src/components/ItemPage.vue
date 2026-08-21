@@ -15,8 +15,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'save-item': [input: SaveItemInput]
-  'save-cost': [input: SaveItemCostInput]
+  'save-item': [input: SaveItemInput, complete: (error?: string) => void]
+  'save-cost': [input: SaveItemCostInput, complete: (error?: string) => void]
   retire: [id: string, date: string]
   'restore-use': [id: string]
   'delete-item': [id: string]
@@ -158,8 +158,14 @@ function submitItem(): void {
       sourceTransactionId: itemSourceMode.value === 'source' ? itemSourceId.value || null : null,
     }
     formError.value = ''
-    emit('save-item', input)
-    dialog.value = null
+    emit('save-item', input, (error?: string) => {
+      if (error) {
+        formError.value = error
+        return
+      }
+      formError.value = ''
+      dialog.value = null
+    })
   } catch (error) {
     formError.value = error instanceof Error ? error.message : '物品信息无效'
   }
@@ -184,7 +190,7 @@ watch(costSourceId, (id) => {
 
 function submitCost(): void {
   try {
-    emit('save-cost', {
+    const input: SaveItemCostInput = {
       ...(costForm.id ? { id: costForm.id } : {}),
       itemId: costItemId.value,
       type: costForm.type,
@@ -192,9 +198,15 @@ function submitCost(): void {
       occurredLocalDate: costForm.date,
       note: costForm.note,
       sourceTransactionId: costSourceId.value || null,
+    }
+    emit('save-cost', input, (error?: string) => {
+      if (error) {
+        formError.value = error
+        return
+      }
+      formError.value = ''
+      dialog.value = null
     })
-    formError.value = ''
-    dialog.value = null
   } catch (error) {
     formError.value = error instanceof Error ? error.message : '追加成本无效'
   }

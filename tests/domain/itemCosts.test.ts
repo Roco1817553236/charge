@@ -73,4 +73,12 @@ describe('item daily cost metrics', () => {
     expect(() => calculateItemMetrics(item({ startedLocalDate: '2024-01-02' }), [], '2024-01-01')).toThrow('物品日期无效')
     expect(() => calculateItemMetrics(item({ retiredLocalDate: '2023-12-31' }), [], '2024-01-01')).toThrow('物品日期无效')
   })
+
+  it('rejects a total cost that exceeds safe integer precision', () => {
+    expect(() => calculateItemMetrics(
+      item({ purchaseAmountMinor: Number.MAX_SAFE_INTEGER - 10 }),
+      [cost({ amountMinor: 20 })],
+      '2024-01-02',
+    )).toThrow('物品总成本过大')
+  })
 })

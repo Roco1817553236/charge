@@ -20,6 +20,12 @@ export interface ItemSummaryFilters {
 
 const DAY_MS = 86_400_000
 
+function safeAddMinor(left: number, right: number): number {
+  const total = left + right
+  if (!Number.isSafeInteger(total)) throw new Error('物品总成本过大')
+  return total
+}
+
 function calendarDay(date: string): number {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
   if (!match) throw new Error('物品日期无效')
@@ -44,8 +50,8 @@ export function calculateItemMetrics(item: OwnedItem, costs: ItemCost[], asOfDat
 
   const usageDays = endDay - startDay + 1
   const additionalMinor = costs.reduce((total, cost) =>
-    cost.itemId === item.id && !cost.deletedAt ? total + cost.amountMinor : total, 0)
-  const totalCostMinor = item.purchaseAmountMinor + additionalMinor
+    cost.itemId === item.id && !cost.deletedAt ? safeAddMinor(total, cost.amountMinor) : total, 0)
+  const totalCostMinor = safeAddMinor(item.purchaseAmountMinor, additionalMinor)
   return { usageDays, totalCostMinor, dailyCostMinor: totalCostMinor / usageDays }
 }
 
@@ -66,7 +72,7 @@ export function buildItemCostSummary(
   const dailyValues = metrics.map((item) => item.dailyCostMinor)
   return {
     usageDays: metrics.reduce((total, item) => total + item.usageDays, 0),
-    totalCostMinor: metrics.reduce((total, item) => total + item.totalCostMinor, 0),
+    totalCostMinor: metrics.reduce((total, item) => safeAddMinor(total, item.totalCostMinor), 0),
     dailyCostMinor: metrics.reduce((total, item) => total + item.dailyCostMinor, 0),
     itemCount: metrics.length,
     totalDailyMinor: metrics.reduce((total, item) => total + item.dailyCostMinor, 0),

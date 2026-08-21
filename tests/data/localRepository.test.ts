@@ -144,6 +144,75 @@ describe('LocalRepository', () => {
     expect(edited.sourceTransactionId).toBe(source.id)
   })
 
+  it('rejects item edits that would invalidate existing costs or change a linked source to income', async () => {
+    const expenseCategory = (await repository.listCategories('expense')).find((item) => item.parentId === null)!
+    const incomeCategory = (await repository.listCategories('income')).find((item) => item.parentId === null)!
+    const source = await repository.addTransaction({
+      type: 'expense', amountMinor: 100_000, categoryId: expenseCategory.id, subcategoryId: null,
+      occurredLocalDate: '2026-08-01', occurredLocalTime: '12:00', note: '电脑',
+    })
+    const itemCategory = (await repository.listItemCategories())[0]!
+    const saved = await repository.saveItem({
+      categoryId: itemCategory.id, name: '电脑', icon: '💻', note: '', purchaseAmountMinor: 100_000,
+      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: source.id,
+    })
+    await repository.saveItemCost({
+      itemId: saved.id, type: 'repair', amountMinor: 100, occurredLocalDate: '2026-08-05', note: '', sourceTransactionId: null,
+    })
+
+    await expect(repository.saveItem({
+      id: saved.id, categoryId: saved.categoryId, name: saved.name, icon: saved.icon, note: '',
+      purchaseAmountMinor: saved.purchaseAmountMinor, purchaseLocalDate: '2026-08-10',
+      startedLocalDate: '2026-08-10', sourceTransactionId: source.id,
+    })).rejects.toThrow('已有追加成本日期超出物品使用范围')
+    await expect(repository.retireItem(saved.id, '2026-08-04')).rejects.toThrow('已有追加成本日期超出物品使用范围')
+    await expect(repository.updateTransaction(source.id, {
+      type: 'income', categoryId: incomeCategory.id, subcategoryId: null,
+    })).rejects.toThrow('已关联物品成本的流水必须保持为支出')
+
+    await repository.softDeleteItem(saved.id)
+    await expect(repository.updateTransaction(source.id, {
+      type: 'income', categoryId: incomeCategory.id, subcategoryId: null,
+    })).rejects.toThrow('已关联物品成本的流水必须保持为支出')
+  })
+
+  it('rejects an added cost that would exceed safe integer precision', async () => {
+    const itemCategory = (await repository.listItemCategories())[0]!
+    const saved = await repository.saveItem({
+      categoryId: itemCategory.id, name: '极端金额物品', icon: '◇', note: '',
+      purchaseAmountMinor: Number.MAX_SAFE_INTEGER - 10, purchaseLocalDate: '2026-08-01',
+      startedLocalDate: '2026-08-01', sourceTransactionId: null,
+    })
+
+    await expect(repository.saveItemCost({
+      itemId: saved.id, type: 'repair', amountMinor: 20, occurredLocalDate: '2026-08-02',
+      note: '', sourceTransactionId: null,
+    })).rejects.toThrow('物品总成本过大')
+  })
+
+  it('rebases an item created after a sync checkpoint onto a newer restored generation', async () => {
+    const checkpoint = await repository.createSyncCheckpoint()
+    const itemCategory = (await repository.listItemCategories())[0]!
+    const lateItem = await repository.saveItem({
+      categoryId: itemCategory.id, name: '同步途中新增物品', icon: '◇', note: '', purchaseAmountMinor: 100,
+      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: null,
+    })
+    const remoteRevision = { counter: 2, deviceId: 'device-b', clock: { 'system-defaults-v1': 1, 'device-b': 2 } }
+    const restored = {
+      ...checkpoint.snapshot,
+      itemCategories: checkpoint.snapshot.itemCategories ?? [],
+      items: [],
+      itemCosts: [],
+      settings: { ...checkpoint.snapshot.settings, revision: remoteRevision, bookEpoch: remoteRevision },
+    }
+
+    await repository.applySyncedSnapshot(restored, [], checkpoint.snapshot)
+
+    const preserved = (await repository.listItems()).find((item) => item.id === lateItem.id)
+    expect(preserved?.name).toBe('同步途中新增物品')
+    expect(preserved?.revision.counter).toBeGreaterThan(lateItem.revision.counter)
+  })
+
   it('writes a valid transaction and increments the device logical revision', async () => {
     const root = (await repository.listCategories('expense')).find((item) => item.parentId === null)!
     const child = (await repository.listCategories('expense')).find((item) => item.parentId === root.id)!

@@ -36,10 +36,10 @@ function cancelSwipe(): void {
     @pointercancel="cancelSwipe"
   >
     <main class="pager-track" :style="{ transform: `translate3d(-${modelValue * 100}%, 0, 0)` }">
-      <div class="pager-page" :aria-hidden="modelValue !== 0"><slot name="entry" /></div>
-      <div class="pager-page" :aria-hidden="modelValue !== 1"><slot name="ledger" /></div>
-      <div class="pager-page" :aria-hidden="modelValue !== 2"><slot name="stats" /></div>
-      <div class="pager-page" :aria-hidden="modelValue !== 3"><slot name="items" /></div>
+      <div class="pager-page" :aria-hidden="modelValue !== 0" :inert="modelValue !== 0"><slot name="entry" /></div>
+      <div class="pager-page" :aria-hidden="modelValue !== 1" :inert="modelValue !== 1"><slot name="ledger" /></div>
+      <div class="pager-page" :aria-hidden="modelValue !== 2" :inert="modelValue !== 2"><slot name="stats" /></div>
+      <div class="pager-page" :aria-hidden="modelValue !== 3" :inert="modelValue !== 3"><slot name="items" /></div>
     </main>
 
     <nav class="bottom-nav" aria-label="主要页面">

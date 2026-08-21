@@ -1,5 +1,5 @@
 import { compareRevision, mergeLedgerEntities } from './merge'
-import type { BookSettings, ConflictRecord, DeviceState, LedgerSnapshot } from './models'
+import type { BookSettings, ConflictRecord, DeviceState, LedgerSnapshot, Revision } from './models'
 
 const GENESIS_BOOK_EPOCH = {
   counter: 1,
@@ -52,6 +52,22 @@ function mergeConflicts(...groups: Array<ConflictRecord[] | undefined>): Conflic
   return [...values.values()]
 }
 
+function mergeRevisionedEntities<T extends { id: string; revision: Revision }>(local: T[] = [], remote: T[] = []): T[] {
+  const values = new Map<string, T>()
+  for (const candidate of [...remote, ...local]) {
+    const existing = values.get(candidate.id)
+    if (!existing) {
+      values.set(candidate.id, candidate)
+      continue
+    }
+    const relation = compareRevision(candidate.revision, existing.revision)
+    if (relation === 'newer' || (relation !== 'older' && JSON.stringify(candidate) < JSON.stringify(existing))) {
+      values.set(candidate.id, candidate)
+    }
+  }
+  return [...values.values()]
+}
+
 export function mergeSnapshots(local: LedgerSnapshot, remote: LedgerSnapshot, now: string): LedgerSnapshot {
   const generationRelation = compareRevision(bookEpoch(local.settings), bookEpoch(remote.settings))
   if (generationRelation === 'newer' || generationRelation === 'older') {
@@ -73,13 +89,19 @@ export function mergeSnapshots(local: LedgerSnapshot, remote: LedgerSnapshot, no
     now,
   )
   const conflicts = mergeConflicts(local.conflicts, remote.conflicts, merged.conflicts)
+  const schemaVersion = Math.max(local.schemaVersion, remote.schemaVersion)
   return {
-    schemaVersion: 1,
+    schemaVersion,
     exportedAt: now,
     transactions: merged.transactions,
     categories: merged.categories,
     settings: mergeSettings(local.settings, remote.settings),
     devices: mergeDevices(local.devices, remote.devices),
     conflicts,
+    ...(schemaVersion >= 2 ? {
+      itemCategories: mergeRevisionedEntities(local.itemCategories, remote.itemCategories),
+      items: mergeRevisionedEntities(local.items, remote.items),
+      itemCosts: mergeRevisionedEntities(local.itemCosts, remote.itemCosts),
+    } : {}),
   }
 }

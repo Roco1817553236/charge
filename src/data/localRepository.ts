@@ -255,7 +255,10 @@ export class LocalRepository {
   async saveItem(input: SaveItemInput): Promise<OwnedItem> {
     return this.db.transaction(
       'rw',
-      [this.db.items, this.db.itemCategories, this.db.transactions, this.db.deviceStates, this.db.syncMetadata],
+      [
+        this.db.items, this.db.itemCosts, this.db.itemCategories, this.db.transactions,
+        this.db.deviceStates, this.db.syncMetadata,
+      ],
       async () => {
         const existing = input.id ? await this.db.items.get(input.id) : undefined
         if (input.id && (!existing || existing.deletedAt)) throw new Error('物品不存在')
@@ -269,6 +272,16 @@ export class LocalRepository {
           Boolean(existing && existing.sourceTransactionId === input.sourceTransactionId),
         )
         this.validateItemInput(input)
+        if (existing) {
+          const endDate = input.retiredLocalDate ?? this.currentLocalDate()
+          const existingCosts = await this.db.itemCosts.where('itemId').equals(existing.id).toArray()
+          const invalidCost = existingCosts
+            .some((cost) => !cost.deletedAt && (
+              cost.occurredLocalDate < input.purchaseLocalDate || cost.occurredLocalDate > endDate
+            ))
+          if (invalidCost) throw new Error('已有追加成本日期超出物品使用范围')
+          this.ensureSafeItemTotal(input.purchaseAmountMinor, existingCosts)
+        }
         const now = this.dependencies.now()
         const revision = await this.nextRevision(existing ? [existing.revision] : [])
         const saved: OwnedItem = {
@@ -323,6 +336,9 @@ export class LocalRepository {
           input.sourceTransactionId,
           Boolean(existing && existing.sourceTransactionId === input.sourceTransactionId),
         )
+        const otherCosts = (await this.db.itemCosts.where('itemId').equals(item.id).toArray())
+          .filter((cost) => !cost.deletedAt && cost.id !== existing?.id)
+        this.ensureSafeItemTotal(item.purchaseAmountMinor, [...otherCosts, { amountMinor: input.amountMinor }])
         const now = this.dependencies.now()
         const revision = await this.nextRevision(existing ? [existing.revision] : [])
         const saved: ItemCost = {
@@ -448,7 +464,10 @@ export class LocalRepository {
   async updateTransaction(id: string, changes: Partial<AddTransactionInput>): Promise<Transaction> {
     return this.db.transaction(
       'rw',
-      [this.db.transactions, this.db.categories, this.db.deviceStates, this.db.syncMetadata],
+      [
+        this.db.transactions, this.db.categories, this.db.items, this.db.itemCosts,
+        this.db.deviceStates, this.db.syncMetadata,
+      ],
       async () => {
         const existing = await this.requireTransaction(id)
         if (existing.deletedAt) throw new Error('已删除的流水不能编辑')
@@ -468,6 +487,13 @@ export class LocalRepository {
           mergedInput.categoryId,
           mergedInput.subcategoryId,
         )
+        if (mergedInput.type !== 'expense') {
+          const [linkedItem, linkedCost] = await Promise.all([
+            this.db.items.filter((item) => item.sourceTransactionId === id).first(),
+            this.db.itemCosts.filter((cost) => cost.sourceTransactionId === id).first(),
+          ])
+          if (linkedItem || linkedCost) throw new Error('已关联物品成本的流水必须保持为支出')
+        }
         const updated: Transaction = {
           ...existing,
           ...mergedInput,
@@ -735,6 +761,18 @@ export class LocalRepository {
           rememberRevision(item.revision)
           rememberRevision(item.deleteRevision)
         })
+        ;(merged.itemCategories ?? []).forEach((item) => {
+          rememberRevision(item.revision)
+          rememberRevision(item.deleteRevision)
+        })
+        ;(merged.items ?? []).forEach((item) => {
+          rememberRevision(item.revision)
+          rememberRevision(item.deleteRevision)
+        })
+        ;(merged.itemCosts ?? []).forEach((item) => {
+          rememberRevision(item.revision)
+          rememberRevision(item.deleteRevision)
+        })
         rememberRevision(merged.settings.revision)
         ;(merged.conflicts ?? []).forEach((conflict) => {
           rememberRevision(conflict.localValue.revision)
@@ -745,12 +783,18 @@ export class LocalRepository {
         await Promise.all([
           this.db.transactions.clear(),
           this.db.categories.clear(),
+          this.db.itemCategories.clear(),
+          this.db.items.clear(),
+          this.db.itemCosts.clear(),
           this.db.settings.clear(),
           this.db.deviceStates.clear(),
           this.db.conflicts.clear(),
         ])
         await this.db.transactions.bulkPut(merged.transactions)
         await this.db.categories.bulkPut(merged.categories)
+        await this.db.itemCategories.bulkPut(merged.itemCategories ?? createDefaultItemCategories())
+        await this.db.items.bulkPut(merged.items ?? [])
+        await this.db.itemCosts.bulkPut(merged.itemCosts ?? [])
         await this.db.settings.put(merged.settings)
         await this.db.deviceStates.bulkPut(devices)
         if ((merged.conflicts?.length ?? 0) > 0) await this.db.conflicts.bulkPut(merged.conflicts!)
@@ -1004,6 +1048,15 @@ export class LocalRepository {
     ) throw new Error('物品日期无效')
   }
 
+  private ensureSafeItemTotal(purchaseAmountMinor: number, costs: Array<{ amountMinor: number; deletedAt?: string }>): void {
+    let total = purchaseAmountMinor
+    for (const cost of costs) {
+      if (cost.deletedAt) continue
+      total += cost.amountMinor
+      if (!Number.isSafeInteger(total)) throw new Error('物品总成本过大')
+    }
+  }
+
   private isValidLocalDate(value: string): boolean {
     const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)?.slice(1).map(Number)
     if (!parts) return false
@@ -1132,6 +1185,9 @@ export class LocalRepository {
     const now = this.dependencies.now()
     const baseTransactions = new Map(checkpoint.transactions.map((item) => [item.id, item]))
     const baseCategories = new Map(checkpoint.categories.map((item) => [item.id, item]))
+    const baseItemCategories = new Map((checkpoint.itemCategories ?? []).map((item) => [item.id, item]))
+    const baseItems = new Map((checkpoint.items ?? []).map((item) => [item.id, item]))
+    const baseItemCosts = new Map((checkpoint.itemCosts ?? []).map((item) => [item.id, item]))
     const changedTransactions = current.transactions.filter((item) => {
       const before = baseTransactions.get(item.id)
       return !before || compareRevision(item.revision, before.revision) !== 'equal'
@@ -1144,10 +1200,31 @@ export class LocalRepository {
         })
         .map((item) => item.id),
     )
+    const currentItemCategories = new Map((current.itemCategories ?? []).map((item) => [item.id, item]))
+    const currentItems = new Map((current.items ?? []).map((item) => [item.id, item]))
+    const changedItemCategoryIds = new Set(
+      (current.itemCategories ?? []).filter((item) => {
+        const before = baseItemCategories.get(item.id)
+        return !before || compareRevision(item.revision, before.revision) !== 'equal'
+      }).map((item) => item.id),
+    )
+    const changedItemIds = new Set(
+      (current.items ?? []).filter((item) => {
+        const before = baseItems.get(item.id)
+        return !before || compareRevision(item.revision, before.revision) !== 'equal'
+      }).map((item) => item.id),
+    )
+    const changedItemCostIds = new Set((current.itemCosts ?? []).filter((item) => {
+      const before = baseItemCosts.get(item.id)
+      return !before || compareRevision(item.revision, before.revision) !== 'equal'
+    }).map((item) => item.id))
 
     if (
       checkpoint.transactions.some((item) => !current.transactions.some((candidate) => candidate.id === item.id)) ||
-      checkpoint.categories.some((item) => !current.categories.some((candidate) => candidate.id === item.id))
+      checkpoint.categories.some((item) => !current.categories.some((candidate) => candidate.id === item.id)) ||
+      (checkpoint.itemCategories ?? []).some((item) => !(current.itemCategories ?? []).some((candidate) => candidate.id === item.id)) ||
+      (checkpoint.items ?? []).some((item) => !(current.items ?? []).some((candidate) => candidate.id === item.id)) ||
+      (checkpoint.itemCosts ?? []).some((item) => !(current.itemCosts ?? []).some((candidate) => candidate.id === item.id))
     ) {
       throw new Error('同步期间检测到无法安全重放的本机替换，请先导出本机备份后重试')
     }
@@ -1174,6 +1251,18 @@ export class LocalRepository {
       rememberRequiredCategory(item.categoryId)
       rememberRequiredCategory(item.subcategoryId)
     })
+    changedItemCostIds.forEach((id) => {
+      const cost = (current.itemCosts ?? []).find((item) => item.id === id)
+      if (cost) changedItemIds.add(cost.itemId)
+    })
+    changedItemIds.forEach((id) => {
+      const item = currentItems.get(id)
+      if (item) changedItemCategoryIds.add(item.categoryId)
+    })
+    ;(current.itemCosts ?? []).forEach((cost) => {
+      if (changedItemIds.has(cost.itemId)) changedItemCostIds.add(cost.id)
+    })
+    const changedItemCosts = (current.itemCosts ?? []).filter((item) => changedItemCostIds.has(item.id))
 
     const observedTarget: Revision[] = [
       this.snapshotEpoch(target),
@@ -1213,6 +1302,46 @@ export class LocalRepository {
         : { ...rest, updatedAt: now, revision })
     }
 
+    const itemCategories = new Map((target.itemCategories ?? []).map((item) => [item.id, item]))
+    for (const id of changedItemCategoryIds) {
+      const item = currentItemCategories.get(id)
+      if (!item) continue
+      const targetValue = itemCategories.get(id)
+      const revision = await this.nextRevision([
+        ...observedTarget, item.revision, ...(targetValue ? [targetValue.revision] : []),
+      ])
+      const { deleteRevision: _deleteRevision, ...rest } = item
+      itemCategories.set(id, item.deletedAt
+        ? { ...rest, updatedAt: now, revision, deleteRevision: revision }
+        : { ...rest, updatedAt: now, revision })
+    }
+
+    const items = new Map((target.items ?? []).map((item) => [item.id, item]))
+    for (const id of changedItemIds) {
+      const item = currentItems.get(id)
+      if (!item) continue
+      const targetValue = items.get(id)
+      const revision = await this.nextRevision([
+        ...observedTarget, item.revision, ...(targetValue ? [targetValue.revision] : []),
+      ])
+      const { deleteRevision: _deleteRevision, ...rest } = item
+      items.set(id, item.deletedAt
+        ? { ...rest, updatedAt: now, revision, deleteRevision: revision }
+        : { ...rest, updatedAt: now, revision })
+    }
+
+    const itemCosts = new Map((target.itemCosts ?? []).map((item) => [item.id, item]))
+    for (const item of changedItemCosts) {
+      const targetValue = itemCosts.get(item.id)
+      const revision = await this.nextRevision([
+        ...observedTarget, item.revision, ...(targetValue ? [targetValue.revision] : []),
+      ])
+      const { deleteRevision: _deleteRevision, ...rest } = item
+      itemCosts.set(item.id, item.deletedAt
+        ? { ...rest, updatedAt: now, revision, deleteRevision: revision }
+        : { ...rest, updatedAt: now, revision })
+    }
+
     let settings = target.settings
     if (compareRevision(current.settings.revision, checkpoint.settings.revision) !== 'equal') {
       const revision = await this.nextRevision([
@@ -1240,6 +1369,9 @@ export class LocalRepository {
       exportedAt: now,
       transactions: [...transactions.values()],
       categories: [...categories.values()],
+      itemCategories: [...itemCategories.values()],
+      items: [...items.values()],
+      itemCosts: [...itemCosts.values()],
       settings,
       conflicts: [...mergedConflicts.values()],
     }

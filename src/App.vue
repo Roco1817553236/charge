@@ -177,12 +177,22 @@ async function deleteTransaction(transaction: Transaction): Promise<void> {
   }
 }
 
-async function saveItem(input: SaveItemInput): Promise<void> {
-  try { await itemStore.saveItem(input) } catch { /* Item store exposes a user-safe error. */ }
+async function saveItem(input: SaveItemInput, complete: (error?: string) => void): Promise<void> {
+  try {
+    await itemStore.saveItem(input)
+    complete()
+  } catch (caught) {
+    complete(caught instanceof Error ? caught.message : '物品保存失败')
+  }
 }
 
-async function saveItemCost(input: SaveItemCostInput): Promise<void> {
-  try { await itemStore.saveCost(input) } catch { /* Item store exposes a user-safe error. */ }
+async function saveItemCost(input: SaveItemCostInput, complete: (error?: string) => void): Promise<void> {
+  try {
+    await itemStore.saveCost(input)
+    complete()
+  } catch (caught) {
+    complete(caught instanceof Error ? caught.message : '追加成本保存失败')
+  }
 }
 
 async function retireItem(id: string, date: string): Promise<void> {

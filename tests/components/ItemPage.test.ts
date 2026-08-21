@@ -135,4 +135,20 @@ describe('ItemPage', () => {
 
     expect(view.get('[data-testid="item-details-phone"]').text()).toContain('来源流水已删除')
   })
+
+  it('keeps the dialog and entered values when the parent reports a save failure', async () => {
+    const view = wrapper()
+    await view.get('[data-testid="add-item"]').trigger('click')
+    await view.get('[data-testid="add-item-manual"]').trigger('click')
+    await view.get('[data-testid="item-name-input"]').setValue('不会丢失的输入')
+    await view.get('[data-testid="item-amount-input"]').setValue('100.00')
+    await view.get('[data-testid="item-category-input"]').setValue('digital')
+    await view.get('[data-testid="item-form"]').trigger('submit')
+    const completion = view.emitted('save-item')?.[0]?.[1] as ((error?: string) => void) | undefined
+    completion?.('物品日期无效')
+    await view.vm.$nextTick()
+
+    expect(view.get('[data-testid="item-name-input"]').element).toHaveProperty('value', '不会丢失的输入')
+    expect(view.text()).toContain('物品日期无效')
+  })
 })

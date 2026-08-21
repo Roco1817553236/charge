@@ -108,6 +108,22 @@ describe('import and export', () => {
 
     expect(() => parsePlainJson(JSON.stringify(missingItemCategory))).toThrow('备份文件格式无效或版本不受支持')
     expect(() => parsePlainJson(JSON.stringify(missingItem))).toThrow('备份文件格式无效或版本不受支持')
+
+    const deletedCategory = {
+      ...itemSnapshot,
+      itemCategories: [{
+        ...itemSnapshot.itemCategories![0]!, deletedAt: itemSnapshot.exportedAt,
+        deleteRevision: itemSnapshot.itemCategories![0]!.revision,
+      }],
+    }
+    expect(() => parsePlainJson(JSON.stringify(deletedCategory))).toThrow('备份文件格式无效或版本不受支持')
+
+    const unsafeTotal = {
+      ...itemSnapshot,
+      items: [{ ...itemSnapshot.items![0]!, purchaseAmountMinor: Number.MAX_SAFE_INTEGER - 10 }],
+      itemCosts: [{ ...itemSnapshot.itemCosts![0]!, amountMinor: 20 }],
+    }
+    expect(() => parsePlainJson(JSON.stringify(unsafeTotal))).toThrow('备份文件格式无效或版本不受支持')
   })
 
   it('imports fixed v1.2 plain and encrypted backups without dropping legacy data', async () => {
