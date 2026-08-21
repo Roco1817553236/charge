@@ -44,6 +44,58 @@ export interface Category {
   deleteRevision?: Revision
 }
 
+export type ItemCategoryStatus = 'active' | 'archived'
+
+export interface ItemCategory {
+  id: string
+  name: string
+  icon: string
+  color: string
+  sortOrder: number
+  status: ItemCategoryStatus
+  revision: Revision
+  createdAt: string
+  updatedAt: string
+  isSystemDefault?: boolean
+  deletedAt?: string
+  deleteRevision?: Revision
+}
+
+export interface OwnedItem {
+  id: string
+  categoryId: string
+  name: string
+  icon: string
+  note: string
+  purchaseAmountMinor: number
+  purchaseLocalDate: string
+  startedLocalDate: string
+  retiredLocalDate?: string
+  sourceTransactionId: string | null
+  revision: Revision
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string
+  deleteRevision?: Revision
+}
+
+export type ItemCostType = 'repair' | 'accessory'
+
+export interface ItemCost {
+  id: string
+  itemId: string
+  type: ItemCostType
+  amountMinor: number
+  occurredLocalDate: string
+  note: string
+  sourceTransactionId: string | null
+  revision: Revision
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string
+  deleteRevision?: Revision
+}
+
 export interface BookSettings {
   id: 'book'
   currency: 'CNY'
@@ -88,4 +140,7 @@ export interface LedgerSnapshot {
   settings: BookSettings
   devices: DeviceState[]
   conflicts?: ConflictRecord[]
+  itemCategories?: ItemCategory[]
+  items?: OwnedItem[]
+  itemCosts?: ItemCost[]
 }

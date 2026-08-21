@@ -99,9 +99,9 @@ function onImport(event: Event): void {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>新建账本的餐饮小类调整为早餐、正餐、晚餐、零食饮料</li>
-          <li>已有账本中的分类名称与全部流水保持不变</li>
-          <li>旧版和新版 JSON 都按备份中的原分类名称导入</li>
+          <li>增加第四个“物品”页面，按使用天数查看每件物品的日均成本</li>
+          <li>购买价格可叠加维修费和配件费，并支持停用后冻结日均</li>
+          <li>物品数据纳入加密与明文 JSON，旧版备份仍可继续导入</li>
         </ul>
       </details>
     </section>

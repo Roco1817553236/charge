@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import CategoryManager from './components/CategoryManager.vue'
 import LedgerPage from './components/LedgerPage.vue'
+import ItemPage from './components/ItemPage.vue'
 import QuickEntryPage from './components/QuickEntryPage.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import StatsPage from './components/StatsPage.vue'
 import SwipePager from './components/SwipePager.vue'
-import type { SaveCategoryInput } from './data/localRepository'
+import type { SaveCategoryInput, SaveItemCategoryInput, SaveItemCostInput, SaveItemInput } from './data/localRepository'
 import type { Category, Transaction } from './domain/models'
 import {
   exportEncryptedBackup,
@@ -18,17 +19,23 @@ import {
 } from './services/importExport'
 import { PwaUpdateController } from './services/pwaUpdate'
 import { useBookStore, type EntryDraft } from './stores/bookStore'
+import { useItemStore } from './stores/itemStore'
 
 const store = useBookStore()
+const itemStore = useItemStore()
 const {
   categories, transactions, draft, pageIndex, loading, saving, toast, error,
   monthComparisonMode, migrationRecoveryAvailable,
 } = storeToRefs(store)
+const {
+  categories: itemCategories, items, costs: itemCosts, transactions: itemTransactions,
+  saving: itemSaving, toast: itemToast, error: itemError,
+} = storeToRefs(itemStore)
 const categoryManagerOpen = ref(false)
 const settingsOpen = ref(false)
 const updateController = new PwaUpdateController()
 const updateState = updateController.state
-const appVersion = import.meta.env.VITE_APP_VERSION || '1.3.1'
+const appVersion = import.meta.env.VITE_APP_VERSION || '1.4.0'
 let dateRefreshTimer: number | null = null
 
 function localToday(): string {
@@ -38,6 +45,13 @@ function localToday(): string {
 }
 
 const today = ref(localToday())
+
+watch(pageIndex, (page) => {
+  if (page !== 3 || !itemStore.initialized) return
+  void itemStore.refresh().catch(() => {
+    itemStore.error = '刷新物品与来源流水失败'
+  })
+})
 
 function scheduleDateRefresh(): void {
   const now = new Date()
@@ -51,6 +65,7 @@ function scheduleDateRefresh(): void {
 onMounted(async () => {
   try {
     await store.initialize()
+    await itemStore.initialize()
     scheduleDateRefresh()
     if (import.meta.env.PROD && 'serviceWorker' in navigator) await updateController.initialize()
   } catch {
@@ -120,6 +135,7 @@ async function importBackup(file: File, method: { password: string } | { recover
     const snapshot = method ? await importEncryptedBackup(content, method) : parsePlainJson(content)
     if (!window.confirm(`将使用“${file.name}”替换当前本机账本，确定继续吗？`)) return
     await store.restoreSnapshot(snapshot)
+    await itemStore.refresh()
   } catch (caught) {
     store.error = caught instanceof Error ? caught.message : '备份恢复失败'
   }
@@ -159,6 +175,48 @@ async function deleteTransaction(transaction: Transaction): Promise<void> {
   } catch {
     // Store error is shown by the shell.
   }
+}
+
+async function saveItem(input: SaveItemInput, complete: (error?: string) => void): Promise<void> {
+  try {
+    await itemStore.saveItem(input)
+    complete()
+  } catch (caught) {
+    complete(caught instanceof Error ? caught.message : '物品保存失败')
+  }
+}
+
+async function saveItemCost(input: SaveItemCostInput, complete: (error?: string) => void): Promise<void> {
+  try {
+    await itemStore.saveCost(input)
+    complete()
+  } catch (caught) {
+    complete(caught instanceof Error ? caught.message : '追加成本保存失败')
+  }
+}
+
+async function retireItem(id: string, date: string): Promise<void> {
+  if (!window.confirm('停用后将以该日期冻结使用天数和日均成本，确定继续吗？')) return
+  try { await itemStore.retire(id, date) } catch { /* Item store exposes a user-safe error. */ }
+}
+
+async function deleteItem(id: string): Promise<void> {
+  if (!window.confirm('确定删除这个物品吗？追加成本会保留用于撤销。')) return
+  try { await itemStore.deleteItem(id) } catch { /* Item store exposes a user-safe error. */ }
+}
+
+async function deleteItemCost(id: string): Promise<void> {
+  if (!window.confirm('确定删除这条追加成本吗？')) return
+  try { await itemStore.deleteCost(id) } catch { /* Item store exposes a user-safe error. */ }
+}
+
+async function saveItemCategory(input: SaveItemCategoryInput): Promise<void> {
+  try { await itemStore.saveCategory(input) } catch { /* Item store exposes a user-safe error. */ }
+}
+
+async function removeItemCategory(id: string): Promise<void> {
+  if (!window.confirm('确定归档或删除这个物品分类吗？')) return
+  try { await itemStore.removeCategory(id) } catch { /* Item store exposes a user-safe error. */ }
 }
 
 function applyAvailableUpdate(): void {
@@ -217,6 +275,24 @@ function applyAvailableUpdate(): void {
             @update:month-comparison-mode="store.updateMonthComparisonMode"
           />
         </template>
+        <template #items>
+          <ItemPage
+            :categories="itemCategories"
+            :items="items"
+            :costs="itemCosts"
+            :transactions="itemTransactions"
+            :as-of-date="today"
+            :saving="itemSaving"
+            @save-item="saveItem"
+            @save-cost="saveItemCost"
+            @retire="retireItem"
+            @restore-use="itemStore.restoreUse"
+            @delete-item="deleteItem"
+            @delete-cost="deleteItemCost"
+            @save-category="saveItemCategory"
+            @remove-category="removeItemCategory"
+          />
+        </template>
       </SwipePager>
 
       <Transition name="drawer">
@@ -255,7 +331,7 @@ function applyAvailableUpdate(): void {
       </Transition>
 
       <Transition name="toast">
-        <div v-if="toast" class="toast-message" role="status">
+        <div v-if="toast && pageIndex !== 3" class="toast-message" role="status">
           <span>{{ toast.message }}</span>
           <button v-if="toast.action === 'undo-delete'" type="button" @click="store.undoDelete">撤销</button>
           <button v-else-if="toast.action === 'undo-save'" type="button" @click="store.undoLastSave">撤销</button>
@@ -263,7 +339,17 @@ function applyAvailableUpdate(): void {
         </div>
       </Transition>
 
+      <Transition name="toast">
+        <div v-if="itemToast && pageIndex === 3" class="toast-message" role="status">
+          <span>{{ itemToast.message }}</span>
+          <button v-if="itemToast.action === 'undo-delete'" type="button" @click="itemStore.undoLastDelete">撤销</button>
+          <button v-else-if="itemToast.action === 'undo-retire'" type="button" @click="itemStore.undoLastRetire">撤销</button>
+          <button type="button" aria-label="关闭物品提示" @click="itemStore.toast = null">×</button>
+        </div>
+      </Transition>
+
       <div v-if="error" class="error-banner" role="alert"><span>!</span>{{ error }}</div>
+      <div v-else-if="itemError" class="error-banner" role="alert"><span>!</span>{{ itemError }}</div>
     </template>
   </div>
 </template>

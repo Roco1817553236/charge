@@ -71,6 +71,37 @@ test('keeps edit identity across reload and overwrites the original row', async 
   await expect(page.getByText('编辑前流水')).toHaveCount(0)
 })
 
+test('tracks item daily cost with additional repair cost across reload', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('nav-items').click()
+  await expect(page.getByRole('heading', { name: '物品日均' })).toBeVisible()
+
+  await page.getByTestId('add-item').click()
+  await page.getByTestId('add-item-manual').click()
+  await page.getByTestId('item-name-input').fill('端到端笔记本')
+  await page.getByTestId('item-amount-input').fill('1000.00')
+  await page.getByTestId('item-purchase-date-input').fill('2026-08-01')
+  await page.getByTestId('item-start-date-input').fill('2026-08-01')
+  await page.getByTestId('item-form').getByRole('button', { name: '保存物品' }).click()
+  await expect(page.getByText('端到端笔记本')).toBeVisible()
+
+  await page.getByRole('button', { name: /端到端笔记本/ }).click()
+  await page.getByRole('button', { name: '＋ 追加成本' }).click()
+  const costDialog = page.getByRole('dialog')
+  await costDialog.getByLabel('金额').fill('200.00')
+  await costDialog.getByLabel('发生日期').fill('2026-08-10')
+  await costDialog.getByLabel('说明').fill('更换风扇')
+  await costDialog.getByRole('button', { name: '保存追加成本' }).click()
+  const itemCard = page.locator('.item-card').filter({ hasText: '端到端笔记本' })
+  await expect(itemCard.getByText('¥1,200.00').last()).toBeVisible()
+
+  await page.reload()
+  await page.getByTestId('nav-items').click()
+  await page.getByRole('button', { name: /端到端笔记本/ }).click()
+  await expect(page.getByText('更换风扇')).toBeVisible()
+  await expect(page.locator('.item-card').filter({ hasText: '端到端笔记本' }).getByText('¥1,200.00').last()).toBeVisible()
+})
+
 test('opens the production PWA while the browser is offline', async ({ page, context }) => {
   await page.goto('/')
   await page.evaluate(async () => { await navigator.serviceWorker.ready })
