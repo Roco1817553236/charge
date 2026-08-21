@@ -81,7 +81,6 @@ test('tracks item daily cost with additional repair cost across reload', async (
   await page.getByTestId('item-name-input').fill('端到端笔记本')
   await page.getByTestId('item-amount-input').fill('1000.00')
   await page.getByTestId('item-purchase-date-input').fill('2026-08-01')
-  await page.getByTestId('item-start-date-input').fill('2026-08-01')
   await page.getByTestId('item-form').getByRole('button', { name: '保存物品' }).click()
   await expect(page.getByText('端到端笔记本')).toBeVisible()
 

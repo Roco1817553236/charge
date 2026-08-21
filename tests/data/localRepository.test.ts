@@ -55,12 +55,52 @@ describe('LocalRepository', () => {
     const saved = await repository.saveItem({
       categoryId: itemCategory.id, name: 'iPhone 12', icon: '📱', note: '自用',
       purchaseAmountMinor: source.amountMinor, purchaseLocalDate: source.occurredLocalDate,
-      startedLocalDate: source.occurredLocalDate, sourceTransactionId: source.id,
+      sourceTransactionId: source.id,
     })
 
     expect(saved.sourceTransactionId).toBe(source.id)
     expect((await repository.listItems())[0]?.name).toBe('iPhone 12')
     expect(await repository.db.transactions.get(source.id)).toEqual(sourceBefore)
+  })
+
+  it('saves purchase date as the compatibility start date without a separate input', async () => {
+    const itemCategory = (await repository.listItemCategories())[0]!
+    const saved = await repository.saveItem({
+      categoryId: itemCategory.id, name: '购买即使用', icon: '◇', note: '', purchaseAmountMinor: 100,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: null,
+    })
+
+    expect(saved.startedLocalDate).toBe('2026-08-01')
+  })
+
+  it('normalizes a legacy start date during initialization without losing the item', async () => {
+    const itemCategory = (await repository.listItemCategories())[0]!
+    const saved = await repository.saveItem({
+      categoryId: itemCategory.id, name: '旧日期物品', icon: '◇', note: '', purchaseAmountMinor: 100,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: null,
+    })
+    await repository.db.items.update(saved.id, { startedLocalDate: '2026-08-10' })
+    repository.close()
+    repository = new LocalRepository(dbName, 'device-a', {
+      now: () => '2026-08-21T04:00:00.000Z', uuid: () => 'unused', timeZone: () => 'Asia/Shanghai',
+    })
+    await repository.initialize()
+
+    const normalized = (await repository.listItems()).find((item) => item.id === saved.id)
+    expect(normalized?.startedLocalDate).toBe('2026-08-01')
+  })
+
+  it('normalizes a legacy start date when restoring a schema v2 backup', async () => {
+    const itemCategory = (await repository.listItemCategories())[0]!
+    await repository.saveItem({
+      categoryId: itemCategory.id, name: '备份旧日期', icon: '◇', note: '', purchaseAmountMinor: 100,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: null,
+    })
+    const backup = await repository.createSnapshot()
+    if (backup.items) backup.items = backup.items.map((item) => ({ ...item, startedLocalDate: '2026-08-10' }))
+    await repository.replaceWithBackup(backup)
+
+    expect((await repository.listItems())[0]?.startedLocalDate).toBe('2026-08-01')
   })
 
   it('rejects an income source and invalid item date order', async () => {
@@ -72,18 +112,18 @@ describe('LocalRepository', () => {
     const itemCategory = (await repository.listItemCategories())[0]!
     const base = {
       categoryId: itemCategory.id, name: '物品', icon: '◇', note: '', purchaseAmountMinor: 100,
-      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: null,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: null,
     }
 
     await expect(repository.saveItem({ ...base, sourceTransactionId: income.id })).rejects.toThrow('来源必须是支出流水')
-    await expect(repository.saveItem({ ...base, startedLocalDate: '2026-07-31' })).rejects.toThrow('物品日期无效')
+    await expect(repository.saveItem({ ...base, purchaseLocalDate: '2026-08-15' })).rejects.toThrow('物品日期无效')
   })
 
   it('adds item costs, freezes retirement, and supports soft-delete undo', async () => {
     const itemCategory = (await repository.listItemCategories())[0]!
     const saved = await repository.saveItem({
       categoryId: itemCategory.id, name: '电脑', icon: '💻', note: '', purchaseAmountMinor: 100_000,
-      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: null,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: null,
     })
     const addedCost = await repository.saveItemCost({
       itemId: saved.id, type: 'repair', amountMinor: 20_000, occurredLocalDate: '2026-08-10',
@@ -110,7 +150,7 @@ describe('LocalRepository', () => {
     const used = await repository.saveItemCategory({ name: '办公', icon: '🖥️', color: '#6366F1' })
     await repository.saveItem({
       categoryId: used.id, name: '显示器', icon: '🖥️', note: '', purchaseAmountMinor: 100_000,
-      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: null,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: null,
     })
     const unused = await repository.saveItemCategory({ name: '临时', icon: '◇', color: '#64748B' })
 
@@ -129,7 +169,7 @@ describe('LocalRepository', () => {
     const itemCategory = await repository.saveItemCategory({ name: '办公', icon: '🖥️', color: '#6366F1' })
     const saved = await repository.saveItem({
       categoryId: itemCategory.id, name: '显示器', icon: '🖥️', note: '', purchaseAmountMinor: 100_000,
-      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: source.id,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: source.id,
     })
     await repository.removeItemCategory(itemCategory.id)
     await repository.softDeleteTransaction(source.id)
@@ -137,7 +177,7 @@ describe('LocalRepository', () => {
     const edited = await repository.saveItem({
       id: saved.id, categoryId: itemCategory.id, name: saved.name, icon: saved.icon, note: '保留旧引用',
       purchaseAmountMinor: saved.purchaseAmountMinor, purchaseLocalDate: saved.purchaseLocalDate,
-      startedLocalDate: saved.startedLocalDate, sourceTransactionId: source.id,
+      sourceTransactionId: source.id,
     })
 
     expect(edited.note).toBe('保留旧引用')
@@ -154,7 +194,7 @@ describe('LocalRepository', () => {
     const itemCategory = (await repository.listItemCategories())[0]!
     const saved = await repository.saveItem({
       categoryId: itemCategory.id, name: '电脑', icon: '💻', note: '', purchaseAmountMinor: 100_000,
-      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: source.id,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: source.id,
     })
     await repository.saveItemCost({
       itemId: saved.id, type: 'repair', amountMinor: 100, occurredLocalDate: '2026-08-05', note: '', sourceTransactionId: null,
@@ -163,7 +203,7 @@ describe('LocalRepository', () => {
     await expect(repository.saveItem({
       id: saved.id, categoryId: saved.categoryId, name: saved.name, icon: saved.icon, note: '',
       purchaseAmountMinor: saved.purchaseAmountMinor, purchaseLocalDate: '2026-08-10',
-      startedLocalDate: '2026-08-10', sourceTransactionId: source.id,
+      sourceTransactionId: source.id,
     })).rejects.toThrow('已有追加成本日期超出物品使用范围')
     await expect(repository.retireItem(saved.id, '2026-08-04')).rejects.toThrow('已有追加成本日期超出物品使用范围')
     await expect(repository.updateTransaction(source.id, {
@@ -180,7 +220,7 @@ describe('LocalRepository', () => {
     const itemCategory = (await repository.listItemCategories())[0]!
     const saved = await repository.saveItem({
       categoryId: itemCategory.id, name: '可撤销成本物品', icon: '◇', note: '', purchaseAmountMinor: 100,
-      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: null,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: null,
     })
     const added = await repository.saveItemCost({
       itemId: saved.id, type: 'repair', amountMinor: 100, occurredLocalDate: '2026-08-05',
@@ -191,7 +231,7 @@ describe('LocalRepository', () => {
     await expect(repository.saveItem({
       id: saved.id, categoryId: saved.categoryId, name: saved.name, icon: saved.icon, note: '',
       purchaseAmountMinor: saved.purchaseAmountMinor, purchaseLocalDate: '2026-08-10',
-      startedLocalDate: '2026-08-10', sourceTransactionId: null,
+      sourceTransactionId: null,
     })).rejects.toThrow('已有追加成本日期超出物品使用范围')
 
     await repository.db.items.update(saved.id, { purchaseLocalDate: '2026-08-10', startedLocalDate: '2026-08-10' })
@@ -203,7 +243,7 @@ describe('LocalRepository', () => {
     const saved = await repository.saveItem({
       categoryId: itemCategory.id, name: '极端金额物品', icon: '◇', note: '',
       purchaseAmountMinor: Number.MAX_SAFE_INTEGER - 10, purchaseLocalDate: '2026-08-01',
-      startedLocalDate: '2026-08-01', sourceTransactionId: null,
+      sourceTransactionId: null,
     })
 
     await expect(repository.saveItemCost({
@@ -217,7 +257,7 @@ describe('LocalRepository', () => {
     const itemCategory = (await repository.listItemCategories())[0]!
     const lateItem = await repository.saveItem({
       categoryId: itemCategory.id, name: '同步途中新增物品', icon: '◇', note: '', purchaseAmountMinor: 100,
-      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: null,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: null,
     })
     const remoteRevision = { counter: 2, deviceId: 'device-b', clock: { 'system-defaults-v1': 1, 'device-b': 2 } }
     const restored = {
@@ -245,7 +285,7 @@ describe('LocalRepository', () => {
     const itemCategory = (await repository.listItemCategories())[0]!
     const lateItem = await repository.saveItem({
       categoryId: itemCategory.id, name: '带来源的物品', icon: '◇', note: '', purchaseAmountMinor: 100,
-      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: source.id,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: source.id,
     })
     const remoteRevision = { counter: 2, deviceId: 'device-b', clock: { 'system-defaults-v1': 1, 'device-b': 2 } }
     const restored = {

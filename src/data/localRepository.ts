@@ -77,7 +77,6 @@ export interface SaveItemInput {
   note: string
   purchaseAmountMinor: number
   purchaseLocalDate: string
-  startedLocalDate: string
   retiredLocalDate?: string
   sourceTransactionId: string | null
 }
@@ -133,7 +132,10 @@ export class LocalRepository {
       await this.db.open()
       await this.db.transaction(
         'rw',
-        [this.db.categories, this.db.itemCategories, this.db.settings, this.db.deviceStates, this.db.syncMetadata],
+        [
+          this.db.categories, this.db.itemCategories, this.db.items, this.db.settings,
+          this.db.deviceStates, this.db.syncMetadata,
+        ],
         async () => {
           const now = this.dependencies.now()
           const existingCategories = await this.db.categories.toArray()
@@ -148,6 +150,24 @@ export class LocalRepository {
 
           if ((await this.db.itemCategories.count()) === 0) {
             await this.db.itemCategories.bulkAdd(createDefaultItemCategories())
+          }
+
+          const legacyItems = await this.db.items.toArray()
+          const normalizedItems: OwnedItem[] = []
+          for (const item of legacyItems) {
+            if (item.startedLocalDate === item.purchaseLocalDate) continue
+            const revision = await this.nextRevision([item.revision])
+            normalizedItems.push({
+              ...item,
+              startedLocalDate: item.purchaseLocalDate,
+              updatedAt: now,
+              revision,
+              ...(item.deletedAt ? { deleteRevision: revision } : {}),
+            })
+          }
+          if (normalizedItems.length > 0) {
+            await this.db.items.bulkPut(normalizedItems)
+            await this.markPending()
           }
 
           if (!(await this.db.deviceStates.get(this.deviceId))) {
@@ -250,7 +270,7 @@ export class LocalRepository {
   async listItems(includeDeleted = false): Promise<OwnedItem[]> {
     return (await this.db.items.toArray())
       .filter((item) => includeDeleted || !item.deletedAt)
-      .sort((left, right) => right.startedLocalDate.localeCompare(left.startedLocalDate) || left.name.localeCompare(right.name, 'zh-CN'))
+      .sort((left, right) => right.purchaseLocalDate.localeCompare(left.purchaseLocalDate) || left.name.localeCompare(right.name, 'zh-CN'))
   }
 
   async saveItem(input: SaveItemInput): Promise<OwnedItem> {
@@ -293,7 +313,7 @@ export class LocalRepository {
           note: input.note.trim(),
           purchaseAmountMinor: input.purchaseAmountMinor,
           purchaseLocalDate: input.purchaseLocalDate,
-          startedLocalDate: input.startedLocalDate,
+          startedLocalDate: input.purchaseLocalDate,
           ...(input.retiredLocalDate ? { retiredLocalDate: input.retiredLocalDate } : {}),
           sourceTransactionId: input.sourceTransactionId,
           revision,
@@ -950,7 +970,7 @@ export class LocalRepository {
           schemaVersion: 2,
           exportedAt: this.dependencies.now(),
           itemCategories: snapshot.itemCategories ?? createDefaultItemCategories(),
-          items: snapshot.items ?? [],
+          items: (snapshot.items ?? []).map((item) => ({ ...item, startedLocalDate: item.purchaseLocalDate })),
           itemCosts: snapshot.itemCosts ?? [],
           settings: {
             ...snapshot.settings,
@@ -1051,12 +1071,10 @@ export class LocalRepository {
     const today = this.currentLocalDate()
     if (
       !this.isValidLocalDate(input.purchaseLocalDate) ||
-      !this.isValidLocalDate(input.startedLocalDate) ||
-      input.purchaseLocalDate > input.startedLocalDate ||
-      input.startedLocalDate > today ||
+      input.purchaseLocalDate > today ||
       (input.retiredLocalDate && (
         !this.isValidLocalDate(input.retiredLocalDate) ||
-        input.retiredLocalDate < input.startedLocalDate ||
+        input.retiredLocalDate < input.purchaseLocalDate ||
         input.retiredLocalDate > today
       ))
     ) throw new Error('物品日期无效')
