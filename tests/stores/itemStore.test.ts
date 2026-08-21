@@ -59,7 +59,7 @@ describe('itemStore', () => {
     const store = useItemStore()
     await store.saveItem({
       categoryId: category.id, name: '手机', icon: '📱', note: '', purchaseAmountMinor: 629_900,
-      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: null,
+      purchaseLocalDate: '2026-08-01', sourceTransactionId: null,
     })
 
     expect(repo.saveItem).toHaveBeenCalled()

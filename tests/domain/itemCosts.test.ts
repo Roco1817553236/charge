@@ -31,6 +31,12 @@ describe('item daily cost metrics', () => {
     })
   })
 
+  it('always starts from the purchase date even for legacy data with a later start date', () => {
+    const legacy = item({ purchaseLocalDate: '2024-01-01', startedLocalDate: '2024-01-10' })
+
+    expect(calculateItemMetrics(legacy, [], '2024-01-10').usageDays).toBe(10)
+  })
+
   it('uses calendar dates across leap day and freezes on the retirement date', () => {
     const retired = item({
       purchaseLocalDate: '2024-02-28', startedLocalDate: '2024-02-28', retiredLocalDate: '2024-03-01',
@@ -70,7 +76,7 @@ describe('item daily cost metrics', () => {
   })
 
   it('rejects invalid or future date ranges', () => {
-    expect(() => calculateItemMetrics(item({ startedLocalDate: '2024-01-02' }), [], '2024-01-01')).toThrow('物品日期无效')
+    expect(() => calculateItemMetrics(item({ purchaseLocalDate: '2024-01-02' }), [], '2024-01-01')).toThrow('物品日期无效')
     expect(() => calculateItemMetrics(item({ retiredLocalDate: '2023-12-31' }), [], '2024-01-01')).toThrow('物品日期无效')
   })
 

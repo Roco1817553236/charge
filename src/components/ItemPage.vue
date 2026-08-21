@@ -61,7 +61,7 @@ const visibleItems = computed(() => props.items
 
 const itemForm = reactive({
   id: undefined as string | undefined,
-  name: '', amount: '', categoryId: '', icon: '◇', purchaseDate: '', startDate: '', retiredDate: undefined as string | undefined, note: '',
+  name: '', amount: '', categoryId: '', icon: '◇', purchaseDate: '', retiredDate: undefined as string | undefined, note: '',
 })
 const costForm = reactive({
   id: undefined as string | undefined,
@@ -101,7 +101,7 @@ function toggleItem(id: string): void {
 function resetItemForm(): void {
   Object.assign(itemForm, {
     id: undefined, name: '', amount: '', categoryId: activeCategories.value[0]?.id ?? '', icon: '◇',
-    purchaseDate: props.asOfDate, startDate: props.asOfDate, retiredDate: undefined, note: '',
+    purchaseDate: props.asOfDate, retiredDate: undefined, note: '',
   })
   itemSourceId.value = ''
   formError.value = ''
@@ -118,7 +118,7 @@ function editItem(item: OwnedItem): void {
   itemSourceId.value = item.sourceTransactionId ?? ''
   Object.assign(itemForm, {
     id: item.id, name: item.name, amount: (item.purchaseAmountMinor / 100).toFixed(2), categoryId: item.categoryId,
-    icon: item.icon, purchaseDate: item.purchaseLocalDate, startDate: item.startedLocalDate,
+    icon: item.icon, purchaseDate: item.purchaseLocalDate,
     retiredDate: item.retiredLocalDate, note: item.note,
   })
   formError.value = ''
@@ -131,7 +131,6 @@ watch(itemSourceId, (id) => {
   if (!transaction) return
   itemForm.amount = (transaction.amountMinor / 100).toFixed(2)
   itemForm.purchaseDate = transaction.occurredLocalDate
-  itemForm.startDate = transaction.occurredLocalDate
   itemForm.note = transaction.note
   if (!itemForm.name) itemForm.name = transaction.note
 })
@@ -155,7 +154,6 @@ function submitItem(): void {
       note: itemForm.note,
       purchaseAmountMinor: parseAmount(itemForm.amount, true),
       purchaseLocalDate: itemForm.purchaseDate,
-      startedLocalDate: itemForm.startDate,
       ...(itemForm.retiredDate ? { retiredLocalDate: itemForm.retiredDate } : {}),
       sourceTransactionId: itemSourceMode.value === 'source' ? itemSourceId.value || null : null,
     }
@@ -281,7 +279,7 @@ function closeDialog(): void {
       <article v-for="item in visibleItems" :key="item.id" class="item-card">
         <button :data-testid="`item-card-${item.id}`" type="button" class="item-row" :aria-expanded="expandedItemId === item.id" @click="toggleItem(item.id)">
           <span class="item-icon" :style="{ background: `${categoryFor(item)?.color ?? '#64748B'}22` }">{{ item.icon || categoryFor(item)?.icon }}</span>
-          <span class="item-copy"><strong>{{ item.name }}</strong><small>总成本 {{ formatMinor(metrics(item).totalCostMinor) }} · {{ item.startedLocalDate }}</small></span>
+          <span class="item-copy"><strong>{{ item.name }}</strong><small>总成本 {{ formatMinor(metrics(item).totalCostMinor) }} · {{ item.purchaseLocalDate }}</small></span>
           <span class="item-daily"><strong>{{ dailyText(item) }}</strong><small>{{ metrics(item).usageDays }} 天⌄</small></span>
         </button>
         <div v-if="expandedItemId === item.id" :data-testid="`item-details-${item.id}`" class="item-details">
@@ -321,7 +319,7 @@ function closeDialog(): void {
           <p v-if="linkedSourceCount > 0" class="source-warning">该流水已经关联 {{ linkedSourceCount }} 件物品，仍可继续创建</p>
           <div class="form-pair"><label>物品名称<input v-model="itemForm.name" data-testid="item-name-input" required maxlength="100"></label><label>图标<input v-model="itemForm.icon" maxlength="4"></label></div>
           <div class="form-pair"><label>购买金额<input v-model="itemForm.amount" data-testid="item-amount-input" inputmode="decimal" required></label><label>物品分类<select v-model="itemForm.categoryId" data-testid="item-category-input" required><option v-for="category in activeCategories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label></div>
-          <div class="form-pair"><label>购买日期<input v-model="itemForm.purchaseDate" data-testid="item-purchase-date-input" type="date" required></label><label>开始使用<input v-model="itemForm.startDate" data-testid="item-start-date-input" type="date" required></label></div>
+          <label>购买日期<input v-model="itemForm.purchaseDate" data-testid="item-purchase-date-input" type="date" required></label>
           <label>备注<textarea v-model="itemForm.note" maxlength="500" rows="2" /></label>
           <p v-if="formError" role="alert" class="form-error">{{ formError }}</p>
           <button class="dialog-primary" type="submit" :disabled="saving || submitting">{{ saving || submitting ? '保存中…' : '保存物品' }}</button>

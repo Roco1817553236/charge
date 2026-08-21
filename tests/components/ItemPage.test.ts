@@ -69,12 +69,13 @@ describe('ItemPage', () => {
     await view.get('[data-testid="item-amount-input"]').setValue('399.00')
     await view.get('[data-testid="item-category-input"]').setValue('digital')
     await view.get('[data-testid="item-purchase-date-input"]').setValue('2026-08-01')
-    await view.get('[data-testid="item-start-date-input"]').setValue('2026-08-02')
+    expect(view.find('[data-testid="item-start-date-input"]').exists()).toBe(false)
     await view.get('[data-testid="item-form"]').trigger('submit')
 
     expect(view.emitted('save-item')?.[0]?.[0]).toMatchObject({
       name: '键盘', purchaseAmountMinor: 39_900, categoryId: 'digital', sourceTransactionId: null,
     })
+    expect(view.emitted('save-item')?.[0]?.[0]).not.toHaveProperty('startedLocalDate')
   })
 
   it('prefills an item from an existing expense transaction', async () => {

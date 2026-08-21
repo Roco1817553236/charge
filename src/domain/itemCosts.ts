@@ -41,10 +41,10 @@ function calendarDay(date: string): number {
 
 export function calculateItemMetrics(item: OwnedItem, costs: ItemCost[], asOfDate: string): ItemMetrics {
   const purchaseDay = calendarDay(item.purchaseLocalDate)
-  const startDay = calendarDay(item.startedLocalDate)
+  const startDay = purchaseDay
   const asOfDay = calendarDay(asOfDate)
   const endDay = item.retiredLocalDate ? calendarDay(item.retiredLocalDate) : asOfDay
-  if (purchaseDay > startDay || startDay > asOfDay || endDay < startDay || endDay > asOfDay) {
+  if (startDay > asOfDay || endDay < startDay || endDay > asOfDay) {
     throw new Error('物品日期无效')
   }
 

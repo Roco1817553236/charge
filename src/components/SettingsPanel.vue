@@ -99,9 +99,9 @@ function onImport(event: Event): void {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>增加第四个“物品”页面，按使用天数查看每件物品的日均成本</li>
-          <li>购买价格可叠加维修费和配件费，并支持停用后冻结日均</li>
-          <li>物品数据纳入加密与明文 JSON，旧版备份仍可继续导入</li>
+          <li>删除重复的“开始使用”输入，购买日期直接作为日均起算日</li>
+          <li>已有物品与 v1.4.0 JSON 自动兼容，不删除物品或追加成本</li>
+          <li>物品卡片统一显示购买日期，停用和维修/配件费规则保持不变</li>
         </ul>
       </details>
     </section>

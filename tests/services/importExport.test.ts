@@ -96,6 +96,17 @@ describe('import and export', () => {
     await expect(importEncryptedBackup(backup.fileContent, { password: '物品备份测试密码足够长' })).resolves.toEqual(itemSnapshot)
   })
 
+  it('accepts a v1.4.0 backup whose legacy start date differs from purchase date', async () => {
+    const legacyV14: LedgerSnapshot = {
+      ...itemSnapshot,
+      items: itemSnapshot.items!.map((item) => ({ ...item, startedLocalDate: '2026-08-05' })),
+    }
+
+    expect(parsePlainJson(exportPlainJson(legacyV14))).toEqual(legacyV14)
+    const backup = await exportEncryptedBackup(legacyV14, '旧版物品兼容测试密码', { iterations: 1_000 })
+    await expect(importEncryptedBackup(backup.fileContent, { password: '旧版物品兼容测试密码' })).resolves.toEqual(legacyV14)
+  })
+
   it('rejects broken item category and item-cost references', () => {
     const missingItemCategory = {
       ...itemSnapshot,
