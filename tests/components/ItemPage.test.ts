@@ -91,6 +91,7 @@ describe('ItemPage', () => {
     const view = wrapper()
     await view.get('[data-testid="item-status-filter"]').setValue('retired')
     await view.get('[data-testid="item-card-chair"]').trigger('click')
+    expect(view.get('[data-testid="item-details-chair"]').text()).toContain('停用日期2026-08-10')
     const edit = view.get('[data-testid="item-details-chair"]').findAll('button').find((button) => button.text() === '编辑')!
     await edit.trigger('click')
     await view.get('[data-testid="item-form"]').trigger('submit')

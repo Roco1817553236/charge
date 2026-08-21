@@ -261,6 +261,7 @@ function toggleCategory(category: ItemCategory): void {
         </button>
         <div v-if="expandedItemId === item.id" :data-testid="`item-details-${item.id}`" class="item-details">
           <div><span>购买价格</span><strong>{{ formatMinor(item.purchaseAmountMinor) }}</strong></div>
+          <div v-if="item.retiredLocalDate"><span>停用日期</span><strong>{{ item.retiredLocalDate }}</strong></div>
           <div v-if="sourceMissing(item.sourceTransactionId)" class="missing-source"><span>购买来源</span><strong>来源流水已删除</strong></div>
           <div v-for="cost in itemCosts(item.id)" :key="cost.id">
             <span>{{ cost.type === 'repair' ? '维修' : '配件' }} · {{ cost.note || cost.occurredLocalDate }}<em v-if="sourceMissing(cost.sourceTransactionId)"> · 来源流水已删除</em></span>
