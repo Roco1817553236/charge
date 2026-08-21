@@ -80,6 +80,7 @@ describe('LocalRepository', () => {
       purchaseLocalDate: '2026-08-01', sourceTransactionId: null,
     })
     await repository.db.items.update(saved.id, { startedLocalDate: '2026-08-10' })
+    const legacyRevision = (await repository.db.items.get(saved.id))!.revision
     repository.close()
     repository = new LocalRepository(dbName, 'device-a', {
       now: () => '2026-08-21T04:00:00.000Z', uuid: () => 'unused', timeZone: () => 'Asia/Shanghai',
@@ -88,19 +89,37 @@ describe('LocalRepository', () => {
 
     const normalized = (await repository.listItems()).find((item) => item.id === saved.id)
     expect(normalized?.startedLocalDate).toBe('2026-08-01')
+    expect(normalized?.revision.counter).toBeGreaterThan(legacyRevision.counter)
+    expect((await repository.getSyncMetadata()).pending).toBe(true)
+
+    const normalizedRevision = normalized!.revision
+    repository.close()
+    repository = new LocalRepository(dbName, 'device-a', {
+      now: () => '2026-08-21T04:01:00.000Z', uuid: () => 'unused-again', timeZone: () => 'Asia/Shanghai',
+    })
+    await repository.initialize()
+    expect((await repository.listItems())[0]?.revision).toEqual(normalizedRevision)
   })
 
   it('normalizes a legacy start date when restoring a schema v2 backup', async () => {
     const itemCategory = (await repository.listItemCategories())[0]!
-    await repository.saveItem({
+    const saved = await repository.saveItem({
       categoryId: itemCategory.id, name: '备份旧日期', icon: '◇', note: '', purchaseAmountMinor: 100,
       purchaseLocalDate: '2026-08-01', sourceTransactionId: null,
+    })
+    const addedCost = await repository.saveItemCost({
+      itemId: saved.id, type: 'accessory', amountMinor: 50, occurredLocalDate: '2026-08-05',
+      note: '兼容配件', sourceTransactionId: null,
     })
     const backup = await repository.createSnapshot()
     if (backup.items) backup.items = backup.items.map((item) => ({ ...item, startedLocalDate: '2026-08-10' }))
     await repository.replaceWithBackup(backup)
 
     expect((await repository.listItems())[0]?.startedLocalDate).toBe('2026-08-01')
+    expect((await repository.listItemCosts())[0]?.id).toBe(addedCost.id)
+    const restored = await repository.createSnapshot()
+    await repository.replaceWithBackup(restored)
+    expect((await repository.listItemCosts())[0]?.note).toBe('兼容配件')
   })
 
   it('rejects an income source and invalid item date order', async () => {
