@@ -35,7 +35,7 @@ const categoryManagerOpen = ref(false)
 const settingsOpen = ref(false)
 const updateController = new PwaUpdateController()
 const updateState = updateController.state
-const appVersion = import.meta.env.VITE_APP_VERSION || '1.4.1'
+const appVersion = import.meta.env.VITE_APP_VERSION || '1.5.0'
 let dateRefreshTimer: number | null = null
 
 function localToday(): string {

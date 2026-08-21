@@ -18,7 +18,7 @@ test('records a transaction and exposes it in the ledger and statistics', async 
 
   await page.getByTestId('nav-stats').click()
   const stats = page.locator('section[aria-labelledby="stats-title"]')
-  await expect(stats.getByRole('heading', { name: '支出去向' })).toBeVisible()
+  await expect(stats.getByRole('heading', { name: '收支统计' })).toBeVisible()
   await expect(stats.getByText('¥18.80').first()).toBeVisible()
 
   const subcategory = stats.locator('.subcategory-list button').first()
@@ -48,6 +48,33 @@ test('persists an unfinished draft across reload and lets the user undo a saved 
   await page.getByRole('status').getByRole('button', { name: '撤销' }).click()
   await page.getByTestId('nav-ledger').click()
   await expect(page.getByText('刷新后仍保留')).toHaveCount(0)
+})
+
+test('shows income, expense and balance together in statistics', async ({ page }) => {
+  await page.setViewportSize({ width: 414, height: 900 })
+  await page.goto('/')
+  await page.getByTestId('amount-input').fill('999999999998.99')
+  await page.getByRole('button', { name: /餐饮/ }).click()
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+
+  await page.getByTestId('type-income').click()
+  await page.getByTestId('amount-input').fill('999999999999.99')
+  await page.getByRole('button', { name: /工资/ }).click()
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存收入' }).click()
+
+  await page.getByTestId('nav-stats').click()
+  await expect(page.getByTestId('stats-current-income')).toContainText('¥999,999,999,999.99')
+  await expect(page.getByTestId('stats-current-expense')).toContainText('¥999,999,999,998.99')
+  await expect(page.getByTestId('stats-current-balance')).toContainText('¥1.00')
+  await page.waitForTimeout(400)
+  const clipped = await page.locator('.cashflow-card strong, .change-card strong').evaluateAll(
+    (nodes) => nodes.some((node) => {
+      const amount = node.getBoundingClientRect()
+      const card = node.closest('article')?.getBoundingClientRect()
+      return !card || amount.left < card.left || amount.right > card.right || amount.left < 0 || amount.right > innerWidth
+    }),
+  )
+  expect(clipped).toBe(false)
 })
 
 test('keeps edit identity across reload and overwrites the original row', async ({ page }) => {
