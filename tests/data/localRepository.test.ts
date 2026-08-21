@@ -13,7 +13,7 @@ describe('LocalRepository', () => {
   beforeEach(async () => {
     await Dexie.delete(dbName)
     repository = new LocalRepository(dbName, 'device-a', {
-      now: () => `2026-08-14T04:00:${String(tick++).padStart(2, '0')}.000Z`,
+      now: () => new Date(Date.UTC(2026, 7, 14, 4, 0, tick++)).toISOString(),
       uuid: () => `tx-${tick}`,
       timeZone: () => 'Asia/Shanghai',
     })
@@ -176,6 +176,28 @@ describe('LocalRepository', () => {
     })).rejects.toThrow('已关联物品成本的流水必须保持为支出')
   })
 
+  it('keeps deleted costs restorable when item dates change and revalidates before restore', async () => {
+    const itemCategory = (await repository.listItemCategories())[0]!
+    const saved = await repository.saveItem({
+      categoryId: itemCategory.id, name: '可撤销成本物品', icon: '◇', note: '', purchaseAmountMinor: 100,
+      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: null,
+    })
+    const added = await repository.saveItemCost({
+      itemId: saved.id, type: 'repair', amountMinor: 100, occurredLocalDate: '2026-08-05',
+      note: '', sourceTransactionId: null,
+    })
+    await repository.softDeleteItemCost(added.id)
+
+    await expect(repository.saveItem({
+      id: saved.id, categoryId: saved.categoryId, name: saved.name, icon: saved.icon, note: '',
+      purchaseAmountMinor: saved.purchaseAmountMinor, purchaseLocalDate: '2026-08-10',
+      startedLocalDate: '2026-08-10', sourceTransactionId: null,
+    })).rejects.toThrow('已有追加成本日期超出物品使用范围')
+
+    await repository.db.items.update(saved.id, { purchaseLocalDate: '2026-08-10', startedLocalDate: '2026-08-10' })
+    await expect(repository.restoreItemCost(added.id)).rejects.toThrow('追加成本日期无效')
+  })
+
   it('rejects an added cost that would exceed safe integer precision', async () => {
     const itemCategory = (await repository.listItemCategories())[0]!
     const saved = await repository.saveItem({
@@ -211,6 +233,31 @@ describe('LocalRepository', () => {
     const preserved = (await repository.listItems()).find((item) => item.id === lateItem.id)
     expect(preserved?.name).toBe('同步途中新增物品')
     expect(preserved?.revision.counter).toBeGreaterThan(lateItem.revision.counter)
+  })
+
+  it('rebases the source expense required by an item created after a checkpoint', async () => {
+    const expenseCategory = (await repository.listCategories('expense')).find((item) => item.parentId === null)!
+    const source = await repository.addTransaction({
+      type: 'expense', amountMinor: 100, categoryId: expenseCategory.id, subcategoryId: null,
+      occurredLocalDate: '2026-08-01', occurredLocalTime: '12:00', note: '物品来源',
+    })
+    const checkpoint = await repository.createSyncCheckpoint()
+    const itemCategory = (await repository.listItemCategories())[0]!
+    const lateItem = await repository.saveItem({
+      categoryId: itemCategory.id, name: '带来源的物品', icon: '◇', note: '', purchaseAmountMinor: 100,
+      purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: source.id,
+    })
+    const remoteRevision = { counter: 2, deviceId: 'device-b', clock: { 'system-defaults-v1': 1, 'device-b': 2 } }
+    const restored = {
+      ...checkpoint.snapshot, transactions: [], items: [], itemCosts: [],
+      itemCategories: checkpoint.snapshot.itemCategories ?? [],
+      settings: { ...checkpoint.snapshot.settings, revision: remoteRevision, bookEpoch: remoteRevision },
+    }
+
+    await repository.applySyncedSnapshot(restored, [], checkpoint.snapshot)
+
+    expect((await repository.listTransactions({ includeDeleted: true })).some((item) => item.id === source.id)).toBe(true)
+    expect((await repository.listItems()).some((item) => item.id === lateItem.id)).toBe(true)
   })
 
   it('writes a valid transaction and increments the device logical revision', async () => {

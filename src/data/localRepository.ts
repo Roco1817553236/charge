@@ -5,6 +5,7 @@ import {
   validateCategorySelection,
 } from '../domain/categories'
 import { createDefaultItemCategories } from '../domain/itemCategories'
+import { assertItemSnapshotIntegrity } from '../domain/itemIntegrity'
 import { compareRevision, revisionClock } from '../domain/merge'
 import { mergeSnapshots } from '../domain/snapshots'
 import type {
@@ -276,7 +277,7 @@ export class LocalRepository {
           const endDate = input.retiredLocalDate ?? this.currentLocalDate()
           const existingCosts = await this.db.itemCosts.where('itemId').equals(existing.id).toArray()
           const invalidCost = existingCosts
-            .some((cost) => !cost.deletedAt && (
+            .some((cost) => (
               cost.occurredLocalDate < input.purchaseLocalDate || cost.occurredLocalDate > endDate
             ))
           if (invalidCost) throw new Error('已有追加成本日期超出物品使用范围')
@@ -407,8 +408,20 @@ export class LocalRepository {
   }
 
   async restoreItemCost(id: string): Promise<ItemCost> {
-    return this.db.transaction('rw', [this.db.itemCosts, this.db.deviceStates, this.db.syncMetadata], async () => {
+    return this.db.transaction('rw', [
+      this.db.itemCosts, this.db.items, this.db.transactions, this.db.deviceStates, this.db.syncMetadata,
+    ], async () => {
       const cost = await this.requireItemCost(id, true)
+      const item = await this.db.items.get(cost.itemId)
+      if (!item || item.deletedAt) throw new Error('物品不存在')
+      const endDate = item.retiredLocalDate ?? this.currentLocalDate()
+      if (cost.occurredLocalDate < item.purchaseLocalDate || cost.occurredLocalDate > endDate) {
+        throw new Error('追加成本日期无效')
+      }
+      await this.validateExpenseSource(cost.sourceTransactionId, true)
+      const otherCosts = (await this.db.itemCosts.where('itemId').equals(item.id).toArray())
+        .filter((candidate) => !candidate.deletedAt && candidate.id !== cost.id)
+      this.ensureSafeItemTotal(item.purchaseAmountMinor, [...otherCosts, { amountMinor: cost.amountMinor }])
       const { deletedAt: _deletedAt, deleteRevision: _deleteRevision, ...rest } = cost
       const restored = { ...rest, updatedAt: this.dependencies.now(), revision: await this.nextRevision([cost.revision]) }
       await this.db.itemCosts.put(restored)
@@ -736,6 +749,7 @@ export class LocalRepository {
         ) {
           merged = await this.rebasePostCheckpointChanges(checkpoint, current, merged)
         }
+        assertItemSnapshotIntegrity(merged, '物品数据并发变更无法安全合并')
         const deviceMap = new Map<string, DeviceState>()
         const rememberDevice = (device: DeviceState): void => {
           const existing = deviceMap.get(device.id)
@@ -1188,10 +1202,10 @@ export class LocalRepository {
     const baseItemCategories = new Map((checkpoint.itemCategories ?? []).map((item) => [item.id, item]))
     const baseItems = new Map((checkpoint.items ?? []).map((item) => [item.id, item]))
     const baseItemCosts = new Map((checkpoint.itemCosts ?? []).map((item) => [item.id, item]))
-    const changedTransactions = current.transactions.filter((item) => {
+    const changedTransactionIds = new Set(current.transactions.filter((item) => {
       const before = baseTransactions.get(item.id)
       return !before || compareRevision(item.revision, before.revision) !== 'equal'
-    })
+    }).map((item) => item.id))
     const changedCategoryIds = new Set(
       current.categories
         .filter((item) => {
@@ -1247,10 +1261,6 @@ export class LocalRepository {
         currentId = category.parentId
       }
     }
-    changedTransactions.forEach((item) => {
-      rememberRequiredCategory(item.categoryId)
-      rememberRequiredCategory(item.subcategoryId)
-    })
     changedItemCostIds.forEach((id) => {
       const cost = (current.itemCosts ?? []).find((item) => item.id === id)
       if (cost) changedItemIds.add(cost.itemId)
@@ -1263,6 +1273,18 @@ export class LocalRepository {
       if (changedItemIds.has(cost.itemId)) changedItemCostIds.add(cost.id)
     })
     const changedItemCosts = (current.itemCosts ?? []).filter((item) => changedItemCostIds.has(item.id))
+    changedItemIds.forEach((id) => {
+      const sourceId = currentItems.get(id)?.sourceTransactionId
+      if (sourceId) changedTransactionIds.add(sourceId)
+    })
+    changedItemCosts.forEach((cost) => {
+      if (cost.sourceTransactionId) changedTransactionIds.add(cost.sourceTransactionId)
+    })
+    const changedTransactions = current.transactions.filter((item) => changedTransactionIds.has(item.id))
+    changedTransactions.forEach((item) => {
+      rememberRequiredCategory(item.categoryId)
+      rememberRequiredCategory(item.subcategoryId)
+    })
 
     const observedTarget: Revision[] = [
       this.snapshotEpoch(target),

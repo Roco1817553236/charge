@@ -145,6 +145,10 @@ describe('ItemPage', () => {
     await view.get('[data-testid="item-category-input"]').setValue('digital')
     await view.get('[data-testid="item-form"]').trigger('submit')
     const completion = view.emitted('save-item')?.[0]?.[1] as ((error?: string) => void) | undefined
+    await view.get('[data-testid="item-form"]').trigger('submit')
+    expect(view.emitted('save-item')).toHaveLength(1)
+    await view.get('button[aria-label="关闭"]').trigger('click')
+    expect(view.find('[data-testid="item-name-input"]').exists()).toBe(true)
     completion?.('物品日期无效')
     await view.vm.$nextTick()
 

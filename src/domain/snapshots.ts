@@ -1,4 +1,5 @@
 import { compareRevision, mergeLedgerEntities } from './merge'
+import { assertItemSnapshotIntegrity } from './itemIntegrity'
 import type { BookSettings, ConflictRecord, DeviceState, LedgerSnapshot, Revision } from './models'
 
 const GENESIS_BOOK_EPOCH = {
@@ -72,11 +73,13 @@ export function mergeSnapshots(local: LedgerSnapshot, remote: LedgerSnapshot, no
   const generationRelation = compareRevision(bookEpoch(local.settings), bookEpoch(remote.settings))
   if (generationRelation === 'newer' || generationRelation === 'older') {
     const selected = generationRelation === 'newer' ? local : remote
-    return {
+    const result = {
       ...selected,
       exportedAt: now,
       devices: mergeDevices(local.devices, remote.devices),
     }
+    assertItemSnapshotIntegrity(result, '物品数据并发变更无法安全合并')
+    return result
   }
   if (generationRelation === 'concurrent') {
     throw new Error('检测到两次并发的账本恢复，请先导出本机备份再选择要保留的版本')
@@ -90,7 +93,7 @@ export function mergeSnapshots(local: LedgerSnapshot, remote: LedgerSnapshot, no
   )
   const conflicts = mergeConflicts(local.conflicts, remote.conflicts, merged.conflicts)
   const schemaVersion = Math.max(local.schemaVersion, remote.schemaVersion)
-  return {
+  const result: LedgerSnapshot = {
     schemaVersion,
     exportedAt: now,
     transactions: merged.transactions,
@@ -104,4 +107,6 @@ export function mergeSnapshots(local: LedgerSnapshot, remote: LedgerSnapshot, no
       itemCosts: mergeRevisionedEntities(local.itemCosts, remote.itemCosts),
     } : {}),
   }
+  assertItemSnapshotIntegrity(result, '物品数据并发变更无法安全合并')
+  return result
 }

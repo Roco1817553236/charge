@@ -35,6 +35,7 @@ const itemSourceId = ref('')
 const costSourceId = ref('')
 const formError = ref('')
 const costItemId = ref('')
+const submitting = ref(false)
 
 const activeCategories = computed(() => props.categories.filter((item) => !item.deletedAt && item.status === 'active'))
 const expenseTransactions = computed(() => props.transactions.filter((item) => item.type === 'expense' && !item.deletedAt))
@@ -144,6 +145,7 @@ function parseAmount(value: string, allowZero: boolean): number {
 }
 
 function submitItem(): void {
+  if (submitting.value) return
   try {
     const input: SaveItemInput = {
       ...(itemForm.id ? { id: itemForm.id } : {}),
@@ -158,7 +160,9 @@ function submitItem(): void {
       sourceTransactionId: itemSourceMode.value === 'source' ? itemSourceId.value || null : null,
     }
     formError.value = ''
+    submitting.value = true
     emit('save-item', input, (error?: string) => {
+      submitting.value = false
       if (error) {
         formError.value = error
         return
@@ -167,6 +171,7 @@ function submitItem(): void {
       dialog.value = null
     })
   } catch (error) {
+    submitting.value = false
     formError.value = error instanceof Error ? error.message : '物品信息无效'
   }
 }
@@ -189,6 +194,7 @@ watch(costSourceId, (id) => {
 })
 
 function submitCost(): void {
+  if (submitting.value) return
   try {
     const input: SaveItemCostInput = {
       ...(costForm.id ? { id: costForm.id } : {}),
@@ -199,7 +205,9 @@ function submitCost(): void {
       note: costForm.note,
       sourceTransactionId: costSourceId.value || null,
     }
+    submitting.value = true
     emit('save-cost', input, (error?: string) => {
+      submitting.value = false
       if (error) {
         formError.value = error
         return
@@ -208,6 +216,7 @@ function submitCost(): void {
       dialog.value = null
     })
   } catch (error) {
+    submitting.value = false
     formError.value = error instanceof Error ? error.message : '追加成本无效'
   }
 }
@@ -231,6 +240,10 @@ function toggleCategory(category: ItemCategory): void {
     sortOrder: category.sortOrder,
     status: 'active',
   })
+}
+
+function closeDialog(): void {
+  if (!submitting.value) dialog.value = null
 }
 </script>
 
@@ -294,9 +307,9 @@ function toggleCategory(category: ItemCategory): void {
     <button data-testid="add-item" class="item-fab" type="button" aria-label="新增物品" @click="dialog = 'choose'">＋</button>
 
     <Teleport to="body">
-    <div v-if="dialog" class="item-dialog-backdrop" @click.self="dialog = null">
+    <div v-if="dialog" class="item-dialog-backdrop" @click.self="closeDialog">
       <section class="item-dialog" role="dialog" aria-modal="true">
-        <header><strong>{{ dialog === 'categories' ? '物品分类' : dialog === 'cost' ? '追加成本' : dialog === 'item' ? (itemForm.id ? '编辑物品' : '新增物品') : '新增物品' }}</strong><button type="button" aria-label="关闭" @click="dialog = null">×</button></header>
+        <header><strong>{{ dialog === 'categories' ? '物品分类' : dialog === 'cost' ? '追加成本' : dialog === 'item' ? (itemForm.id ? '编辑物品' : '新增物品') : '新增物品' }}</strong><button type="button" aria-label="关闭" :disabled="submitting" @click="closeDialog">×</button></header>
 
         <div v-if="dialog === 'choose'" class="source-choices">
           <button data-testid="add-item-source" type="button" @click="beginAdd('source')"><b>☷</b><span><strong>从支出流水创建</strong><small>自动带入金额和日期</small></span></button>
@@ -311,7 +324,7 @@ function toggleCategory(category: ItemCategory): void {
           <div class="form-pair"><label>购买日期<input v-model="itemForm.purchaseDate" data-testid="item-purchase-date-input" type="date" required></label><label>开始使用<input v-model="itemForm.startDate" data-testid="item-start-date-input" type="date" required></label></div>
           <label>备注<textarea v-model="itemForm.note" maxlength="500" rows="2" /></label>
           <p v-if="formError" role="alert" class="form-error">{{ formError }}</p>
-          <button class="dialog-primary" type="submit" :disabled="saving">{{ saving ? '保存中…' : '保存物品' }}</button>
+          <button class="dialog-primary" type="submit" :disabled="saving || submitting">{{ saving || submitting ? '保存中…' : '保存物品' }}</button>
         </form>
 
         <form v-else-if="dialog === 'cost'" class="item-form" @submit.prevent="submitCost">
@@ -320,7 +333,7 @@ function toggleCategory(category: ItemCategory): void {
           <div class="form-pair"><label>金额<input v-model="costForm.amount" inputmode="decimal" required></label><label>发生日期<input v-model="costForm.date" type="date" required></label></div>
           <label>说明<textarea v-model="costForm.note" maxlength="500" rows="2" /></label>
           <p v-if="formError" role="alert" class="form-error">{{ formError }}</p>
-          <button class="dialog-primary" type="submit" :disabled="saving">保存追加成本</button>
+          <button class="dialog-primary" type="submit" :disabled="saving || submitting">{{ saving || submitting ? '保存中…' : '保存追加成本' }}</button>
         </form>
 
         <div v-else-if="dialog === 'categories'" class="category-manager">

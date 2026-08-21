@@ -72,4 +72,28 @@ describe('snapshot generations', () => {
     expect(merged.itemCategories).toEqual([itemCategory])
     expect(merged.items).toEqual([item])
   })
+
+  it('stops a concurrent merge that would break item source or cost-date references', () => {
+    const epoch = { counter: 1, deviceId: 'system-defaults-v1', clock: { 'system-defaults-v1': 1 } }
+    const category: ItemCategory = {
+      id: 'digital', name: '数码', icon: '💻', color: '#6366F1', sortOrder: 0, status: 'active',
+      revision: { counter: 1, deviceId: 'device-a' }, createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z',
+    }
+    const base = snapshot('source', epoch)
+    base.transactions[0] = { ...base.transactions[0]!, categoryId: 'food' }
+    const incomeSide = {
+      ...base, schemaVersion: 2, itemCategories: [category], items: [], itemCosts: [],
+      transactions: [{ ...base.transactions[0]!, type: 'income' as const, revision: { counter: 2, deviceId: 'device-a' } }],
+    }
+    const itemSide = {
+      ...base, schemaVersion: 2, itemCategories: [category], itemCosts: [],
+      items: [{
+        id: 'phone', categoryId: 'digital', name: '手机', icon: '📱', note: '', purchaseAmountMinor: 100,
+        purchaseLocalDate: '2026-08-01', startedLocalDate: '2026-08-01', sourceTransactionId: 'source',
+        revision: { counter: 2, deviceId: 'device-b' }, createdAt: base.exportedAt, updatedAt: base.exportedAt,
+      }],
+    }
+
+    expect(() => mergeSnapshots(incomeSide, itemSide, '2026-08-21T00:00:00.000Z')).toThrow('物品数据并发变更无法安全合并')
+  })
 })
