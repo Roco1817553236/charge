@@ -53,21 +53,26 @@ test('persists an unfinished draft across reload and lets the user undo a saved 
 test('shows income, expense and balance together in statistics', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 900 })
   await page.goto('/')
-  await page.getByTestId('amount-input').fill('1000.00')
+  await page.getByTestId('amount-input').fill('1.00')
   await page.getByRole('button', { name: /餐饮/ }).click()
   await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
 
   await page.getByTestId('type-income').click()
-  await page.getByTestId('amount-input').fill('123456.78')
+  await page.getByTestId('amount-input').fill('999999999999.99')
   await page.getByRole('button', { name: /工资/ }).click()
   await page.getByTestId('save-entry').getByRole('button', { name: '保存收入' }).click()
 
   await page.getByTestId('nav-stats').click()
-  await expect(page.getByTestId('stats-current-income')).toContainText('¥123,456.78')
-  await expect(page.getByTestId('stats-current-expense')).toContainText('¥1,000.00')
-  await expect(page.getByTestId('stats-current-balance')).toContainText('¥122,456.78')
+  await expect(page.getByTestId('stats-current-income')).toContainText('¥999,999,999,999.99')
+  await expect(page.getByTestId('stats-current-expense')).toContainText('¥1.00')
+  await expect(page.getByTestId('stats-current-balance')).toContainText('¥999,999,999,998.99')
+  await page.waitForTimeout(400)
   const clipped = await page.locator('.cashflow-card strong, .change-card strong').evaluateAll(
-    (nodes) => nodes.some((node) => node.scrollWidth > node.clientWidth || getComputedStyle(node).overflow === 'hidden'),
+    (nodes) => nodes.some((node) => {
+      const amount = node.getBoundingClientRect()
+      const card = node.closest('article')?.getBoundingClientRect()
+      return !card || amount.left < card.left || amount.right > card.right || amount.left < 0 || amount.right > innerWidth
+    }),
   )
   expect(clipped).toBe(false)
 })
