@@ -36,9 +36,11 @@ describe('StatsPage', () => {
     expect(wrapper.text()).toContain('¥40.00')
     expect(wrapper.text()).toContain('较上月同期')
     expect(wrapper.get('[data-testid="stats-current-income"]').text()).toContain('¥100.00')
-    expect(wrapper.get('[data-testid="stats-current-income"]').get('strong').classes()).toContain('positive')
+    expect(wrapper.get('[data-testid="stats-current-income"]').get('strong').classes()).toContain('income-value')
     expect(wrapper.get('[data-testid="stats-current-expense"]').text()).toContain('¥40.00')
+    expect(wrapper.get('[data-testid="stats-current-expense"]').get('strong').classes()).toContain('expense-value')
     expect(wrapper.get('[data-testid="stats-current-balance"]').text()).toContain('¥60.00')
+    expect(wrapper.get('[data-testid="stats-current-balance"]').get('strong').classes()).toContain('income-value')
     expect(wrapper.get('[data-testid="stats-income-change"]').text()).toContain('+¥100.00')
     expect(wrapper.get('[data-testid="stats-expense-change"]').text()).toContain('+¥20.00')
     expect(wrapper.get('[data-testid="stats-balance-change"]').text()).toContain('+¥80.00')
@@ -75,6 +77,7 @@ describe('StatsPage', () => {
     expect(wrapper.get('[data-testid="stats-current-income"]').text()).toContain('¥0.00')
     expect(wrapper.get('[data-testid="stats-current-expense"]').text()).toContain('¥25.00')
     expect(wrapper.get('[data-testid="stats-current-balance"]').text()).toContain('-¥25.00')
+    expect(wrapper.get('[data-testid="stats-current-balance"]').get('strong').classes()).toContain('expense-value')
   })
 
   it('updates only the lower breakdown when another root category is selected', async () => {

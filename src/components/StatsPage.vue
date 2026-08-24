@@ -211,17 +211,17 @@ function monthTitle(value: string): string {
     <div class="cashflow-summary">
       <article data-testid="stats-current-income" class="cashflow-card income">
         <span>{{ comparison.currentLabel }}收入</span>
-        <strong class="positive">{{ formatMinor(comparison.current.incomeMinor) }}</strong>
+        <strong class="income-value">{{ formatMinor(comparison.current.incomeMinor) }}</strong>
         <small>{{ comparison.current.incomeCount }} 笔收入</small>
       </article>
       <article data-testid="stats-current-expense" class="cashflow-card expense">
         <span>{{ comparison.currentLabel }}支出</span>
-        <strong>{{ formatMinor(comparison.current.expenseMinor) }}</strong>
+        <strong class="expense-value">{{ formatMinor(comparison.current.expenseMinor) }}</strong>
         <small>{{ comparison.current.count }} 笔支出</small>
       </article>
       <article data-testid="stats-current-balance" class="cashflow-card balance">
         <span>{{ comparison.currentLabel }}结余</span>
-        <strong :class="comparison.current.balanceMinor >= 0 ? 'positive' : 'negative'">{{ formatMinor(comparison.current.balanceMinor) }}</strong>
+        <strong :class="comparison.current.balanceMinor >= 0 ? 'income-value' : 'expense-value'">{{ formatMinor(comparison.current.balanceMinor) }}</strong>
         <small>收入 − 支出</small>
       </article>
     </div>
@@ -229,17 +229,17 @@ function monthTitle(value: string): string {
     <div class="cashflow-changes" :aria-label="`较${comparison.previousLabel}变化`">
       <article data-testid="stats-income-change" class="change-card">
         <span>收入变化</span>
-        <strong :class="comparison.incomeChangeMinor >= 0 ? 'positive' : 'negative'">{{ signedAmount(comparison.incomeChangeMinor) }}</strong>
+        <strong :class="comparison.incomeChangeMinor >= 0 ? 'income-value' : 'expense-value'">{{ signedAmount(comparison.incomeChangeMinor) }}</strong>
         <small>较{{ comparison.previousLabel }} {{ formatMinor(comparison.previous.incomeMinor) }} · {{ rateLabel(comparison.incomeChangeRate, '上期无收入') }}</small>
       </article>
       <article data-testid="stats-expense-change" class="change-card">
         <span>支出变化</span>
-        <strong :class="comparison.expenseChangeMinor <= 0 ? 'positive' : 'negative'">{{ signedAmount(comparison.expenseChangeMinor) }}</strong>
+        <strong :class="comparison.expenseChangeMinor <= 0 ? 'income-value' : 'expense-value'">{{ signedAmount(comparison.expenseChangeMinor) }}</strong>
         <small>较{{ comparison.previousLabel }} {{ formatMinor(comparison.previous.expenseMinor) }} · {{ rateLabel(comparison.expenseChangeRate, '上期无支出') }}</small>
       </article>
       <article data-testid="stats-balance-change" class="change-card">
         <span>结余变化</span>
-        <strong :class="comparison.balanceChangeMinor >= 0 ? 'positive' : 'negative'">{{ signedAmount(comparison.balanceChangeMinor) }}</strong>
+        <strong :class="comparison.balanceChangeMinor >= 0 ? 'income-value' : 'expense-value'">{{ signedAmount(comparison.balanceChangeMinor) }}</strong>
         <small>较{{ comparison.previousLabel }}结余 {{ formatMinor(comparison.previous.balanceMinor) }}</small>
       </article>
     </div>
@@ -254,7 +254,7 @@ function monthTitle(value: string): string {
             aria-label="支出大类占比图"
             :style="{ background: categoryDonutBackground }"
           >
-            <span><strong>{{ formatMinor(comparison.current.expenseMinor) }}</strong><small>全部支出</small></span>
+            <span><strong class="expense-value">{{ formatMinor(comparison.current.expenseMinor) }}</strong><small>全部支出</small></span>
           </div>
           <div class="breakdown-list">
             <button
@@ -268,7 +268,7 @@ function monthTitle(value: string): string {
             >
               <i :style="{ background: row.color }" />
               <span>{{ row.name }}</span>
-              <strong>{{ formatMinor(row.expenseMinor) }}</strong>
+              <strong class="expense-value">{{ formatMinor(row.expenseMinor) }}</strong>
               <small>{{ percentageLabel(row.percentage) }}</small>
             </button>
           </div>
@@ -288,7 +288,7 @@ function monthTitle(value: string): string {
             :aria-label="`${selectedCategory.name}小类占比图`"
             :style="{ background: subcategoryDonutBackground }"
           >
-            <span><strong>{{ formatMinor(selectedCategory.expenseMinor) }}</strong><small>{{ selectedCategory.name }}合计</small></span>
+            <span><strong class="expense-value">{{ formatMinor(selectedCategory.expenseMinor) }}</strong><small>{{ selectedCategory.name }}合计</small></span>
           </div>
           <div class="breakdown-list subcategory-list">
             <button
@@ -305,7 +305,7 @@ function monthTitle(value: string): string {
             >
               <i :style="{ background: row.color }" />
               <span>{{ row.name }}</span>
-              <strong>{{ formatMinor(row.expenseMinor) }}</strong>
+              <strong class="expense-value">{{ formatMinor(row.expenseMinor) }}</strong>
               <small>{{ percentageLabel(row.percentage) }}</small>
             </button>
           </div>
@@ -351,7 +351,7 @@ function monthTitle(value: string): string {
             <span class="transaction-note" :aria-label="transaction.note || '无备注'">
               {{ transaction.note || '无备注' }}
             </span>
-            <strong>-{{ formatMinor(transaction.amountMinor) }}</strong>
+            <strong class="expense-value">-{{ formatMinor(transaction.amountMinor) }}</strong>
           </div>
         </div>
       </article>
@@ -388,12 +388,12 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .cashflow-card span, .change-card span { color: var(--muted); font-size: 10px; font-weight: 700; }
 .cashflow-card strong { color: var(--ink); font: 750 clamp(18px, 4.5vw, 29px)/1.1 var(--font-display); letter-spacing: -.045em; white-space: nowrap; }
 .cashflow-card small, .change-card small { overflow: hidden; color: var(--muted); font-size: 8px; line-height: 1.4; text-overflow: ellipsis; }
-.cashflow-card.expense { border-color: color-mix(in srgb, var(--accent) 22%, var(--line)); background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 9%, var(--surface)), var(--surface)); }
-.cashflow-card.income { border-color: color-mix(in srgb, var(--positive) 20%, var(--line)); }
+.cashflow-card.expense { border-color: color-mix(in srgb, var(--expense-color) 22%, var(--line)); background: linear-gradient(145deg, var(--expense-soft), var(--surface)); }
+.cashflow-card.income { border-color: color-mix(in srgb, var(--income-color) 22%, var(--line)); background: linear-gradient(145deg, var(--income-soft), var(--surface)); }
 .change-card { padding: 11px 13px; border-radius: 15px; box-shadow: none; }
 .change-card strong { color: var(--ink); font-size: clamp(14px, 3.5vw, 20px); line-height: 1.15; white-space: nowrap; }
-.positive { color: var(--positive) !important; }
-.negative { color: var(--danger) !important; }
+.income-value { color: var(--income-color) !important; }
+.expense-value { color: var(--expense-color) !important; }
 .chart-card { margin-top: 14px; padding: 17px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-soft); }
 .chart-card > header { display: flex; align-items: start; justify-content: space-between; margin-bottom: 15px; }
 .chart-card header > div { display: grid; gap: 3px; }
@@ -425,7 +425,7 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .subcategory-transaction time { display: grid; gap: 2px; color: var(--ink); font-size: 10px; font-weight: 700; }
 .subcategory-transaction time small { color: var(--muted); font-size: 9px; font-weight: 600; }
 .transaction-note { overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.subcategory-transaction > strong { color: var(--danger); font-size: 11px; white-space: nowrap; }
+.subcategory-transaction > strong { font-size: 11px; white-space: nowrap; }
 .chart-empty { display: grid; min-height: 240px; place-content: center; place-items: center; gap: 7px; margin-top: 14px; padding: 28px; border: 1px dashed var(--line); border-radius: 22px; background: var(--surface); color: var(--muted); text-align: center; }
 .chart-empty > span { font-size: 34px; }.chart-empty strong { color: var(--ink); font-size: 13px; }.chart-empty p { margin: 0; font-size: 10px; }
 @media (min-width: 700px) { .stats-page { padding-top: 36px; }.category-layout { grid-template-columns: 160px minmax(0, 1fr); }.donut { width: 145px; height: 145px; }.donut::after { inset: 29px; } }

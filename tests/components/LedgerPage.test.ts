@@ -24,6 +24,11 @@ describe('LedgerPage', () => {
     expect(wrapper.text()).toContain('工作餐')
     expect(wrapper.text()).toContain('¥25.80')
     expect(wrapper.text()).toContain('八月工资')
+    const amounts = wrapper.findAll('.transaction-amount')
+    expect(amounts.find((amount) => amount.text().includes('25.80'))?.classes()).toContain('expense')
+    expect(amounts.find((amount) => amount.text().includes('1,000.00'))?.classes()).toContain('income')
+    expect(wrapper.get('[data-testid="day-expense-2026-08-14"]').classes()).toContain('expense-value')
+    expect(wrapper.get('[data-testid="day-income-2026-08-13"]').classes()).toContain('income-value')
 
     await wrapper.get('[data-testid="ledger-search"]').setValue('工作餐')
     expect(wrapper.text()).toContain('工作餐')

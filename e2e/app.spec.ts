@@ -53,11 +53,26 @@ test('persists an unfinished draft across reload and lets the user undo a saved 
 test('shows income, expense and balance together in statistics', async ({ page }) => {
   await page.setViewportSize({ width: 414, height: 900 })
   await page.goto('/')
+  const semanticColors = await page.evaluate(() => {
+    const resolve = (token: string) => {
+      const probe = document.createElement('span')
+      probe.style.color = `var(${token})`
+      document.body.append(probe)
+      const color = getComputedStyle(probe).color
+      probe.remove()
+      return color
+    }
+    return { income: resolve('--income-color'), expense: resolve('--expense-color') }
+  })
+  await expect(page.getByTestId('amount-input')).toHaveCSS('color', semanticColors.expense)
+  await expect(page.getByTestId('save-entry').locator('.save-button')).toHaveCSS('background-color', semanticColors.expense)
   await page.getByTestId('amount-input').fill('999999999998.99')
   await page.getByRole('button', { name: /餐饮/ }).click()
   await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
 
   await page.getByTestId('type-income').click()
+  await expect(page.getByTestId('amount-input')).toHaveCSS('color', semanticColors.income)
+  await expect(page.getByTestId('save-entry').locator('.save-button')).toHaveCSS('background-color', semanticColors.income)
   await page.getByTestId('amount-input').fill('999999999999.99')
   await page.getByRole('button', { name: /工资/ }).click()
   await page.getByTestId('save-entry').getByRole('button', { name: '保存收入' }).click()
@@ -66,6 +81,8 @@ test('shows income, expense and balance together in statistics', async ({ page }
   await expect(page.getByTestId('stats-current-income')).toContainText('¥999,999,999,999.99')
   await expect(page.getByTestId('stats-current-expense')).toContainText('¥999,999,999,998.99')
   await expect(page.getByTestId('stats-current-balance')).toContainText('¥1.00')
+  await expect(page.getByTestId('stats-current-income').locator('strong')).toHaveCSS('color', semanticColors.income)
+  await expect(page.getByTestId('stats-current-expense').locator('strong')).toHaveCSS('color', semanticColors.expense)
   await page.waitForTimeout(400)
   const clipped = await page.locator('.cashflow-card strong, .change-card strong').evaluateAll(
     (nodes) => nodes.some((node) => {
@@ -75,6 +92,25 @@ test('shows income, expense and balance together in statistics', async ({ page }
     }),
   )
   expect(clipped).toBe(false)
+
+  await page.getByTestId('nav-ledger').click()
+  await expect(page.locator('.transaction-amount.income')).toHaveCSS('color', semanticColors.income)
+  await expect(page.locator('.transaction-amount.expense')).toHaveCSS('color', semanticColors.expense)
+
+  await page.emulateMedia({ colorScheme: 'dark' })
+  const darkColors = await page.evaluate(() => {
+    const resolve = (token: string) => {
+      const probe = document.createElement('span')
+      probe.style.color = `var(${token})`
+      document.body.append(probe)
+      const color = getComputedStyle(probe).color
+      probe.remove()
+      return color
+    }
+    return { income: resolve('--income-color'), expense: resolve('--expense-color') }
+  })
+  await expect(page.locator('.transaction-amount.income')).toHaveCSS('color', darkColors.income)
+  await expect(page.locator('.transaction-amount.expense')).toHaveCSS('color', darkColors.expense)
 })
 
 test('keeps edit identity across reload and overwrites the original row', async ({ page }) => {

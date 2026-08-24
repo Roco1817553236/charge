@@ -80,7 +80,7 @@ function submit(): void {
       <button class="icon-button" type="button" aria-label="管理分类" @click="emit('manage-categories')">⚙</button>
     </header>
 
-    <form data-testid="save-entry" class="entry-card" @submit.prevent="submit">
+    <form data-testid="save-entry" class="entry-card" :class="`${form.type}-mode`" @submit.prevent="submit">
       <div class="type-switch" aria-label="收支类型">
         <button
           data-testid="type-expense"
@@ -183,11 +183,15 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .type-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 4px; border-radius: 14px; background: var(--surface-2); }
 .type-switch button { min-height: 40px; border: 0; border-radius: 11px; background: transparent; color: var(--muted); font-weight: 700; }
 .type-switch button.active { background: var(--surface); color: var(--ink); box-shadow: 0 2px 10px rgb(15 23 42 / 8%); }
+.expense-mode .type-switch [data-testid="type-expense"].active { background: var(--expense-soft); color: var(--expense-color); }
+.income-mode .type-switch [data-testid="type-income"].active { background: var(--income-soft); color: var(--income-color); }
 .amount-field { position: relative; display: grid; grid-template-columns: auto 1fr; align-items: end; margin: 24px 2px 28px; border-bottom: 1px solid var(--line); }
 .amount-field > span:first-child { grid-column: 1 / -1; margin-bottom: 7px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .currency { padding: 0 8px 9px 0; color: var(--muted); font-size: 26px; font-weight: 700; }
 .amount-field input { width: 100%; min-width: 0; padding: 0 0 6px; border: 0; outline: 0; background: transparent; color: var(--ink); font: 700 clamp(44px, 13vw, 66px)/1.1 var(--font-display); letter-spacing: -.055em; }
 .amount-field input::placeholder { color: var(--ink-faint); }
+.expense-mode .currency, .expense-mode .amount-field input { color: var(--expense-color); }
+.income-mode .currency, .income-mode .amount-field input { color: var(--income-color); }
 .section-heading { display: flex; justify-content: space-between; margin-bottom: 12px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .section-heading button { border: 0; background: transparent; color: var(--accent); font-weight: 700; }
 .category-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
@@ -204,6 +208,8 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .note-field { grid-column: 1 / -1; }
 .note-field textarea { min-height: 68px; resize: vertical; }
 .save-button { display: flex; width: 100%; min-height: 54px; align-items: center; justify-content: space-between; margin-top: 20px; padding: 0 20px; border: 0; border-radius: 17px; background: var(--accent); color: white; font-size: 15px; font-weight: 800; box-shadow: 0 12px 25px color-mix(in srgb, var(--accent) 28%, transparent); }
+.expense-mode .save-button { background: var(--expense-color); color: var(--expense-on-color); box-shadow: 0 12px 25px color-mix(in srgb, var(--expense-color) 28%, transparent); }
+.income-mode .save-button { background: var(--income-color); color: var(--income-on-color); box-shadow: 0 12px 25px color-mix(in srgb, var(--income-color) 28%, transparent); }
 .save-button:disabled { box-shadow: none; cursor: not-allowed; opacity: .4; }
 .rise-enter-active, .rise-leave-active { transition: .18s ease; }
 .rise-enter-from, .rise-leave-to { opacity: 0; transform: translateY(-6px); }

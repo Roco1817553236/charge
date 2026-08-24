@@ -39,6 +39,8 @@ describe('ItemPage', () => {
   it('shows active-item summary and filters retired items by status and category', async () => {
     const view = wrapper()
     expect(view.get('[data-testid="item-count"]').text()).toContain('1')
+    expect(view.get('[data-testid="item-total-cost"]').classes()).toContain('expense-value')
+    expect(view.get('[data-testid="item-total-daily"]').classes()).toContain('expense-value')
     expect(view.text()).toContain('手机')
     expect(view.text()).not.toContain('椅子')
 
