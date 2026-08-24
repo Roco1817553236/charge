@@ -127,9 +127,9 @@ function act(event: 'edit' | 'duplicate' | 'delete', transaction: Transaction): 
       <section v-for="group in groups" :key="group.date" class="day-group">
         <header class="day-header">
           <strong>{{ dateLabel(group.date) }}</strong>
-          <span>
-            <template v-if="group.expenseMinor">支出 {{ formatMinor(group.expenseMinor) }}</template>
-            <template v-if="group.incomeMinor"> · 收入 {{ formatMinor(group.incomeMinor) }}</template>
+          <span class="day-totals">
+            <span v-if="group.expenseMinor" :data-testid="`day-expense-${group.date}`" class="expense-value">支出 {{ formatMinor(group.expenseMinor) }}</span>
+            <span v-if="group.incomeMinor" :data-testid="`day-income-${group.date}`" class="income-value">收入 {{ formatMinor(group.incomeMinor) }}</span>
           </span>
         </header>
 
@@ -185,6 +185,9 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .ledger-groups { display: grid; gap: 22px; }
 .day-header { display: flex; align-items: center; justify-content: space-between; margin: 0 3px 9px; color: var(--muted); font-size: 11px; }
 .day-header strong { color: var(--ink); font-size: 14px; }
+.day-totals { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; }
+.income-value { color: var(--income-color) !important; }
+.expense-value { color: var(--expense-color) !important; }
 .day-group { min-width: 0; }
 .transaction-row { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto 28px; align-items: center; gap: 11px; min-height: 72px; padding: 11px 10px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .transaction-row:first-of-type { border-radius: 18px 18px 0 0; }
@@ -194,8 +197,9 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .transaction-main { display: grid; min-width: 0; gap: 4px; }
 .transaction-main strong { overflow: hidden; color: var(--ink); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .transaction-main span { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.transaction-amount { color: var(--ink); font-size: 14px; white-space: nowrap; }
-.transaction-amount.income { color: var(--positive); }
+.transaction-amount { font-size: 14px; white-space: nowrap; }
+.transaction-amount.income { color: var(--income-color); }
+.transaction-amount.expense { color: var(--expense-color); }
 .more-button { width: 28px; height: 34px; border: 0; background: transparent; color: var(--muted); font-size: 11px; letter-spacing: -1px; }
 .action-wrap { position: relative; }
 .action-menu { position: absolute; z-index: 5; top: 34px; right: 0; display: grid; width: 104px; padding: 5px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow-card); }

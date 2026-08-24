@@ -36,12 +36,17 @@ describe('StatsPage', () => {
     expect(wrapper.text()).toContain('¥40.00')
     expect(wrapper.text()).toContain('较上月同期')
     expect(wrapper.get('[data-testid="stats-current-income"]').text()).toContain('¥100.00')
-    expect(wrapper.get('[data-testid="stats-current-income"]').get('strong').classes()).toContain('positive')
+    expect(wrapper.get('[data-testid="stats-current-income"]').get('strong').classes()).toContain('income-value')
     expect(wrapper.get('[data-testid="stats-current-expense"]').text()).toContain('¥40.00')
+    expect(wrapper.get('[data-testid="stats-current-expense"]').get('strong').classes()).toContain('expense-value')
     expect(wrapper.get('[data-testid="stats-current-balance"]').text()).toContain('¥60.00')
+    expect(wrapper.get('[data-testid="stats-current-balance"]').get('strong').classes()).toContain('income-value')
     expect(wrapper.get('[data-testid="stats-income-change"]').text()).toContain('+¥100.00')
     expect(wrapper.get('[data-testid="stats-expense-change"]').text()).toContain('+¥20.00')
     expect(wrapper.get('[data-testid="stats-balance-change"]').text()).toContain('+¥80.00')
+    expect(wrapper.get('[data-testid="stats-income-change"]').get('small .income-value').text()).toContain('¥0.00')
+    expect(wrapper.get('[data-testid="stats-expense-change"]').get('small .expense-value').text()).toContain('¥20.00')
+    expect(wrapper.get('[data-testid="stats-balance-change"]').get('small .expense-value').text()).toContain('-¥20.00')
     expect(wrapper.text()).not.toContain('每日趋势')
 
     const food = wrapper.get('[data-testid="expense-category-food"]')
@@ -75,6 +80,16 @@ describe('StatsPage', () => {
     expect(wrapper.get('[data-testid="stats-current-income"]').text()).toContain('¥0.00')
     expect(wrapper.get('[data-testid="stats-current-expense"]').text()).toContain('¥25.00')
     expect(wrapper.get('[data-testid="stats-current-balance"]').text()).toContain('-¥25.00')
+    expect(wrapper.get('[data-testid="stats-current-balance"]').get('strong').classes()).toContain('expense-value')
+  })
+
+  it('keeps zero balance and zero changes neutral', () => {
+    const wrapper = mount(StatsPage, { props: { transactions: [], categories, asOfDate: '2026-08-14' } })
+
+    expect(wrapper.get('[data-testid="stats-current-balance"]').get('strong').classes()).toContain('neutral-value')
+    expect(wrapper.get('[data-testid="stats-income-change"]').get('strong').classes()).toContain('neutral-value')
+    expect(wrapper.get('[data-testid="stats-expense-change"]').get('strong').classes()).toContain('neutral-value')
+    expect(wrapper.get('[data-testid="stats-balance-change"]').get('strong').classes()).toContain('neutral-value')
   })
 
   it('updates only the lower breakdown when another root category is selected', async () => {
@@ -102,6 +117,7 @@ describe('StatsPage', () => {
     await lunch.trigger('click')
 
     const details = wrapper.get('[data-testid="expense-subcategory-details"]')
+    expect(details.get('.details-header .expense-value').text()).toContain('¥30.00')
     expect(lunch.attributes('aria-pressed')).toBe('true')
     expect(details.text()).toContain('正餐流水')
     expect(details.text()).toContain('本月至今')

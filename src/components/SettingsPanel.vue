@@ -99,9 +99,9 @@ function onImport(event: Event): void {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>统计页顶部恢复收入、支出和结余，月度与年度都可查看</li>
-          <li>增加收入变化、支出变化和结余变化三项同期比较</li>
-          <li>下方大类、小类支出去向和流水明细保持原样，不恢复趋势图</li>
+          <li>全应用统一为收入红色、支出绿色，符合红入绿出习惯</li>
+          <li>正结余红、负结余绿；收入/支出变化按同一规则显示</li>
+          <li>删除和报错继续使用独立警示红，分类颜色与紫色导航不变</li>
         </ul>
       </details>
     </section>

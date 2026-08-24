@@ -29,6 +29,8 @@ describe('QuickEntryPage', () => {
   it('completes the amount-category-subcategory fast path and emits a save draft', async () => {
     const wrapper = mount(QuickEntryPage, { props: { categories, draft } })
 
+    expect(wrapper.get('[data-testid="save-entry"]').classes()).toContain('expense-mode')
+
     await wrapper.get('[data-testid="amount-input"]').setValue('25.80')
     await wrapper.get('[data-testid="category-food"]').trigger('click')
     expect(wrapper.text()).toContain('正餐')
@@ -45,6 +47,7 @@ describe('QuickEntryPage', () => {
     const wrapper = mount(QuickEntryPage, { props: { categories: [...categories, income], draft } })
 
     await wrapper.get('[data-testid="type-income"]').trigger('click')
+    expect(wrapper.get('[data-testid="save-entry"]').classes()).toContain('income-mode')
     expect(wrapper.find('[data-testid="category-salary"]').exists()).toBe(true)
     await wrapper.get('[data-testid="entry-details-toggle"]').trigger('click')
     expect(wrapper.find('input[aria-label="日期"]').exists()).toBe(true)

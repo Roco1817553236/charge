@@ -53,28 +53,76 @@ test('persists an unfinished draft across reload and lets the user undo a saved 
 test('shows income, expense and balance together in statistics', async ({ page }) => {
   await page.setViewportSize({ width: 414, height: 900 })
   await page.goto('/')
+  const disabledBackground = await page.getByTestId('save-entry').locator('.save-button').evaluate((element) => getComputedStyle(element).backgroundColor)
+  expect(disabledBackground).not.toBe('rgb(21, 128, 61)')
+  expect(disabledBackground).not.toBe('rgb(198, 40, 40)')
   await page.getByTestId('amount-input').fill('999999999998.99')
   await page.getByRole('button', { name: /餐饮/ }).click()
+  await expect(page.getByTestId('amount-input')).toHaveCSS('color', 'rgb(21, 128, 61)')
+  await expect(page.getByTestId('save-entry').locator('.save-button')).toHaveCSS('background-color', 'rgb(21, 128, 61)')
   await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
 
   await page.getByTestId('type-income').click()
   await page.getByTestId('amount-input').fill('999999999999.99')
   await page.getByRole('button', { name: /工资/ }).click()
+  await expect(page.getByTestId('amount-input')).toHaveCSS('color', 'rgb(198, 40, 40)')
+  await expect(page.getByTestId('save-entry').locator('.save-button')).toHaveCSS('background-color', 'rgb(198, 40, 40)')
   await page.getByTestId('save-entry').getByRole('button', { name: '保存收入' }).click()
 
   await page.getByTestId('nav-stats').click()
   await expect(page.getByTestId('stats-current-income')).toContainText('¥999,999,999,999.99')
   await expect(page.getByTestId('stats-current-expense')).toContainText('¥999,999,999,998.99')
   await expect(page.getByTestId('stats-current-balance')).toContainText('¥1.00')
-  await page.waitForTimeout(400)
-  const clipped = await page.locator('.cashflow-card strong, .change-card strong').evaluateAll(
-    (nodes) => nodes.some((node) => {
-      const amount = node.getBoundingClientRect()
-      const card = node.closest('article')?.getBoundingClientRect()
-      return !card || amount.left < card.left || amount.right > card.right || amount.left < 0 || amount.right > innerWidth
-    }),
-  )
-  expect(clipped).toBe(false)
+  await expect(page.getByTestId('stats-current-income').locator('strong')).toHaveCSS('color', 'rgb(198, 40, 40)')
+  await expect(page.getByTestId('stats-current-expense').locator('strong')).toHaveCSS('color', 'rgb(21, 128, 61)')
+  for (const width of [360, 414, 736]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.waitForTimeout(400)
+    const clipped = await page.locator('.cashflow-card strong, .change-card strong').evaluateAll(
+      (nodes) => nodes.some((node) => {
+        const amount = node.getBoundingClientRect()
+        const card = node.closest('article')?.getBoundingClientRect()
+        return !card || amount.left < card.left || amount.right > card.right || amount.left < 0 || amount.right > innerWidth
+      }),
+    )
+    expect(clipped, `${width}px cashflow amount clipping`).toBe(false)
+  }
+
+  await page.getByTestId('nav-ledger').click()
+  await expect(page.locator('.transaction-amount.income')).toHaveCSS('color', 'rgb(198, 40, 40)')
+  await expect(page.locator('.transaction-amount.expense')).toHaveCSS('color', 'rgb(21, 128, 61)')
+
+  await page.emulateMedia({ colorScheme: 'dark' })
+  const darkColors = await page.evaluate(() => {
+    const resolve = (token: string) => {
+      const probe = document.createElement('span')
+      probe.style.color = `var(${token})`
+      document.body.append(probe)
+      const color = getComputedStyle(probe).color
+      probe.remove()
+      return color
+    }
+    return { income: resolve('--income-color'), expense: resolve('--expense-color') }
+  })
+  expect(darkColors).toEqual({ income: 'rgb(255, 107, 107)', expense: 'rgb(74, 222, 128)' })
+  await expect(page.locator('.transaction-amount.income')).toHaveCSS('color', 'rgb(255, 107, 107)')
+  await expect(page.locator('.transaction-amount.expense')).toHaveCSS('color', 'rgb(74, 222, 128)')
+  await expect(page.locator('.day-totals .income-value')).toHaveCSS('color', 'rgb(255, 107, 107)')
+  await expect(page.locator('.day-totals .expense-value')).toHaveCSS('color', 'rgb(74, 222, 128)')
+
+  await page.getByTestId('nav-stats').click()
+  await expect(page.getByTestId('stats-current-income').locator('strong')).toHaveCSS('color', 'rgb(255, 107, 107)')
+  await expect(page.getByTestId('stats-current-expense').locator('strong')).toHaveCSS('color', 'rgb(74, 222, 128)')
+  await expect(page.locator('[data-testid="expense-category-card"] .expense-value').first()).toHaveCSS('color', 'rgb(74, 222, 128)')
+
+  await page.getByTestId('nav-entry').click()
+  await page.getByTestId('amount-input').fill('1.00')
+  await page.getByRole('button', { name: /工资/ }).click()
+  await expect(page.getByTestId('amount-input')).toHaveCSS('color', 'rgb(255, 107, 107)')
+  await expect(page.getByTestId('save-entry').locator('.save-button')).toHaveCSS('background-color', 'rgb(255, 107, 107)')
+
+  await page.getByTestId('nav-items').click()
+  await expect(page.getByTestId('item-total-cost')).toHaveCSS('color', 'rgb(74, 222, 128)')
 })
 
 test('keeps edit identity across reload and overwrites the original row', async ({ page }) => {

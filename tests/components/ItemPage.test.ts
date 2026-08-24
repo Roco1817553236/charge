@@ -39,6 +39,8 @@ describe('ItemPage', () => {
   it('shows active-item summary and filters retired items by status and category', async () => {
     const view = wrapper()
     expect(view.get('[data-testid="item-count"]').text()).toContain('1')
+    expect(view.get('[data-testid="item-total-cost"]').classes()).toContain('expense-value')
+    expect(view.get('[data-testid="item-total-daily"]').classes()).toContain('expense-value')
     expect(view.text()).toContain('手机')
     expect(view.text()).not.toContain('椅子')
 
@@ -56,6 +58,13 @@ describe('ItemPage', () => {
 
     expect(view.get('[data-testid="item-details-phone"]').text()).toContain('换电池')
     expect(view.get('[data-testid="item-details-phone"]').text()).toContain('¥1,200.00')
+    expect(view.get('button[aria-label="删除追加成本"]').classes()).toContain('danger-action')
+    const deleteItem = view.get('[data-testid="item-details-phone"]').findAll('button').find((button) => button.text() === '删除')!
+    expect(deleteItem.classes()).toContain('danger-action')
+
+    await view.get('[data-testid="item-details-phone"]').findAll('button').find((button) => button.text().includes('追加成本'))!.trigger('click')
+    expect(view.get('[data-testid="item-cost-source-input"]').classes()).toContain('expense-input')
+    expect(view.get('[data-testid="item-cost-amount-input"]').classes()).toContain('expense-input')
   })
 
   it('offers source-ledger and manual creation, then emits a manual item', async () => {
@@ -67,6 +76,7 @@ describe('ItemPage', () => {
     await view.get('[data-testid="add-item-manual"]').trigger('click')
     await view.get('[data-testid="item-name-input"]').setValue('键盘')
     await view.get('[data-testid="item-amount-input"]').setValue('399.00')
+    expect(view.get('[data-testid="item-amount-input"]').classes()).toContain('expense-input')
     await view.get('[data-testid="item-category-input"]').setValue('digital')
     await view.get('[data-testid="item-purchase-date-input"]').setValue('2026-08-01')
     expect(view.find('[data-testid="item-start-date-input"]').exists()).toBe(false)
@@ -103,7 +113,10 @@ describe('ItemPage', () => {
   it('restores an archived item category from the category manager', async () => {
     const view = wrapper()
     await view.get('button[aria-label="管理物品分类"]').trigger('click')
+    const activeRow = view.findAll('.category-row').find((entry) => entry.text().includes('数码'))!
+    expect(activeRow.get('button').classes()).toContain('danger-action')
     const row = view.findAll('.category-row').find((entry) => entry.text().includes('旧分类'))!
+    expect(row.get('button').classes()).not.toContain('danger-action')
     await row.get('button').trigger('click')
 
     expect(view.emitted('save-category')?.[0]?.[0]).toMatchObject({ id: 'old', status: 'active' })
