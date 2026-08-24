@@ -40,13 +40,18 @@ describe('cashflow color tokens', () => {
       expect(contrast(hex, surfaces[index]!)).toBeGreaterThanOrEqual(4.5)
       expect(contrast(hex, incomeOn[index]!)).toBeGreaterThanOrEqual(4.5)
     })
-    expense.forEach((hex) => {
+    expense.forEach((hex, index) => {
       const [red, green, blue] = rgb(hex)
       expect(green).toBeGreaterThan(red!)
       expect(green).toBeGreaterThan(blue!)
-      const index = expense.indexOf(hex)
       expect(contrast(hex, surfaces[index]!)).toBeGreaterThanOrEqual(4.5)
       expect(contrast(hex, expenseOn[index]!)).toBeGreaterThanOrEqual(4.5)
+    })
+    danger.forEach((hex, index) => {
+      const [red, green, blue] = rgb(hex)
+      expect(red).toBeGreaterThan(green!)
+      expect(red).toBeGreaterThan(blue!)
+      expect(hex).not.toBe(expense[index])
     })
   })
 })
