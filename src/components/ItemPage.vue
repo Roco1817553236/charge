@@ -288,7 +288,7 @@ function closeDialog(): void {
           <div v-if="sourceMissing(item.sourceTransactionId)" class="missing-source"><span>购买来源</span><strong>来源流水已删除</strong></div>
           <div v-for="cost in itemCosts(item.id)" :key="cost.id">
             <span>{{ cost.type === 'repair' ? '维修' : '配件' }} · {{ cost.note || cost.occurredLocalDate }}<em v-if="sourceMissing(cost.sourceTransactionId)"> · 来源流水已删除</em></span>
-            <strong class="expense-value">+ {{ formatMinor(cost.amountMinor) }} <button type="button" aria-label="删除追加成本" @click="emit('delete-cost', cost.id)">×</button></strong>
+            <strong class="expense-value">+ {{ formatMinor(cost.amountMinor) }} <button type="button" class="danger-action" aria-label="删除追加成本" @click="emit('delete-cost', cost.id)">×</button></strong>
           </div>
           <div><span>总成本</span><strong class="expense-value">{{ formatMinor(metrics(item).totalCostMinor) }}</strong></div>
           <div class="item-actions">
@@ -296,7 +296,7 @@ function closeDialog(): void {
             <button type="button" @click="editItem(item)">编辑</button>
             <button v-if="item.retiredLocalDate" type="button" @click="emit('restore-use', item.id)">恢复使用</button>
             <button v-else type="button" @click="emit('retire', item.id, asOfDate)">停用</button>
-            <button type="button" @click="emit('delete-item', item.id)">删除</button>
+            <button type="button" class="danger-action" @click="emit('delete-item', item.id)">删除</button>
           </div>
         </div>
       </article>
@@ -315,10 +315,10 @@ function closeDialog(): void {
         </div>
 
         <form v-else-if="dialog === 'item'" data-testid="item-form" class="item-form" @submit.prevent="submitItem">
-          <label v-if="itemSourceMode === 'source'">来源支出<select v-model="itemSourceId" data-testid="item-source-input" required><option value="" disabled>选择支出流水</option><option v-for="transaction in expenseTransactions" :key="transaction.id" :value="transaction.id">{{ transaction.occurredLocalDate }} · {{ formatMinor(transaction.amountMinor) }} · {{ transaction.note || '无备注' }}</option></select></label>
+          <label v-if="itemSourceMode === 'source'">来源支出<select v-model="itemSourceId" data-testid="item-source-input" class="expense-input" required><option value="" disabled>选择支出流水</option><option v-for="transaction in expenseTransactions" :key="transaction.id" :value="transaction.id">{{ transaction.occurredLocalDate }} · {{ formatMinor(transaction.amountMinor) }} · {{ transaction.note || '无备注' }}</option></select></label>
           <p v-if="linkedSourceCount > 0" class="source-warning">该流水已经关联 {{ linkedSourceCount }} 件物品，仍可继续创建</p>
           <div class="form-pair"><label>物品名称<input v-model="itemForm.name" data-testid="item-name-input" required maxlength="100"></label><label>图标<input v-model="itemForm.icon" maxlength="4"></label></div>
-          <div class="form-pair"><label>购买金额<input v-model="itemForm.amount" data-testid="item-amount-input" inputmode="decimal" required></label><label>物品分类<select v-model="itemForm.categoryId" data-testid="item-category-input" required><option v-for="category in activeCategories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label></div>
+          <div class="form-pair"><label>购买金额<input v-model="itemForm.amount" data-testid="item-amount-input" class="expense-input" inputmode="decimal" required></label><label>物品分类<select v-model="itemForm.categoryId" data-testid="item-category-input" required><option v-for="category in activeCategories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label></div>
           <label>购买日期<input v-model="itemForm.purchaseDate" data-testid="item-purchase-date-input" type="date" required></label>
           <label>备注<textarea v-model="itemForm.note" maxlength="500" rows="2" /></label>
           <p v-if="formError" role="alert" class="form-error">{{ formError }}</p>
@@ -327,8 +327,8 @@ function closeDialog(): void {
 
         <form v-else-if="dialog === 'cost'" class="item-form" @submit.prevent="submitCost">
           <div class="type-tabs"><button type="button" :class="{ active: costForm.type === 'repair' }" @click="costForm.type = 'repair'">维修费</button><button type="button" :class="{ active: costForm.type === 'accessory' }" @click="costForm.type = 'accessory'">配件费</button></div>
-          <label>关联支出（可选）<select v-model="costSourceId"><option value="">手动填写</option><option v-for="transaction in expenseTransactions" :key="transaction.id" :value="transaction.id">{{ transaction.occurredLocalDate }} · {{ formatMinor(transaction.amountMinor) }} · {{ transaction.note || '无备注' }}</option></select></label>
-          <div class="form-pair"><label>金额<input v-model="costForm.amount" inputmode="decimal" required></label><label>发生日期<input v-model="costForm.date" type="date" required></label></div>
+          <label>关联支出（可选）<select v-model="costSourceId" data-testid="item-cost-source-input" class="expense-input"><option value="">手动填写</option><option v-for="transaction in expenseTransactions" :key="transaction.id" :value="transaction.id">{{ transaction.occurredLocalDate }} · {{ formatMinor(transaction.amountMinor) }} · {{ transaction.note || '无备注' }}</option></select></label>
+          <div class="form-pair"><label>金额<input v-model="costForm.amount" data-testid="item-cost-amount-input" class="expense-input" inputmode="decimal" required></label><label>发生日期<input v-model="costForm.date" type="date" required></label></div>
           <label>说明<textarea v-model="costForm.note" maxlength="500" rows="2" /></label>
           <p v-if="formError" role="alert" class="form-error">{{ formError }}</p>
           <button class="dialog-primary" type="submit" :disabled="saving || submitting">{{ saving || submitting ? '保存中…' : '保存追加成本' }}</button>
@@ -374,10 +374,12 @@ function closeDialog(): void {
 .item-details span { color: var(--muted); }
 .item-details em, .missing-source strong { color: var(--danger); font-style: normal; }
 .item-details strong { font-weight: 700; }
-.item-details strong button { border: 0; background: transparent; color: var(--muted); }
+.item-details strong button { border: 0; background: transparent; }
 .item-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .item-actions button { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); color: var(--ink); font-size: 11px; }
 .item-actions button:first-child { border-color: transparent; background: var(--accent); color: white; }
+.danger-action { color: var(--danger) !important; }
+.expense-input { color: var(--expense-color) !important; }
 .item-empty { padding: 50px 12px; color: var(--muted); text-align: center; }
 .item-fab { position: sticky; z-index: 22; bottom: 82px; display: grid; width: 52px; height: 52px; place-items: center; margin: 24px 4px 0 auto; border: 0; border-radius: 17px; background: var(--accent); color: white; box-shadow: 0 12px 30px rgb(109 93 252 / 35%); font-size: 27px; }
 .item-dialog-backdrop { position: fixed; z-index: 70; inset: 0; display: grid; padding: 18px; place-items: end center; background: rgb(15 23 42 / 38%); }

@@ -210,7 +210,7 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .save-button { display: flex; width: 100%; min-height: 54px; align-items: center; justify-content: space-between; margin-top: 20px; padding: 0 20px; border: 0; border-radius: 17px; background: var(--accent); color: white; font-size: 15px; font-weight: 800; box-shadow: 0 12px 25px color-mix(in srgb, var(--accent) 28%, transparent); }
 .expense-mode .save-button { background: var(--expense-color); color: var(--expense-on-color); box-shadow: 0 12px 25px color-mix(in srgb, var(--expense-color) 28%, transparent); }
 .income-mode .save-button { background: var(--income-color); color: var(--income-on-color); box-shadow: 0 12px 25px color-mix(in srgb, var(--income-color) 28%, transparent); }
-.save-button:disabled { box-shadow: none; cursor: not-allowed; opacity: .4; }
+.save-button:disabled { background: var(--surface-2); color: var(--muted); box-shadow: none; cursor: not-allowed; opacity: .65; }
 .rise-enter-active, .rise-leave-active { transition: .18s ease; }
 .rise-enter-from, .rise-leave-to { opacity: 0; transform: translateY(-6px); }
 @media (min-width: 680px) { .entry-page { padding-top: 36px; } .entry-card { padding: 24px; } .category-grid { grid-template-columns: repeat(6, 1fr); } }

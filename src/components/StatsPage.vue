@@ -135,6 +135,12 @@ function signedAmount(value: number): string {
   return `${value > 0 ? '+' : ''}${formatMinor(value)}`
 }
 
+function semanticValueClass(value: number, positiveClass = 'income-value', negativeClass = 'expense-value'): string {
+  if (value > 0) return positiveClass
+  if (value < 0) return negativeClass
+  return 'neutral-value'
+}
+
 function setComparisonMode(mode: 'to-date' | 'full-month'): void {
   currentMonthMode.value = mode
   emit('update:monthComparisonMode', mode)
@@ -221,7 +227,7 @@ function monthTitle(value: string): string {
       </article>
       <article data-testid="stats-current-balance" class="cashflow-card balance">
         <span>{{ comparison.currentLabel }}结余</span>
-        <strong :class="comparison.current.balanceMinor >= 0 ? 'income-value' : 'expense-value'">{{ formatMinor(comparison.current.balanceMinor) }}</strong>
+        <strong :class="semanticValueClass(comparison.current.balanceMinor)">{{ formatMinor(comparison.current.balanceMinor) }}</strong>
         <small>收入 − 支出</small>
       </article>
     </div>
@@ -229,18 +235,18 @@ function monthTitle(value: string): string {
     <div class="cashflow-changes" :aria-label="`较${comparison.previousLabel}变化`">
       <article data-testid="stats-income-change" class="change-card">
         <span>收入变化</span>
-        <strong :class="comparison.incomeChangeMinor >= 0 ? 'income-value' : 'expense-value'">{{ signedAmount(comparison.incomeChangeMinor) }}</strong>
-        <small>较{{ comparison.previousLabel }} {{ formatMinor(comparison.previous.incomeMinor) }} · {{ rateLabel(comparison.incomeChangeRate, '上期无收入') }}</small>
+        <strong :class="semanticValueClass(comparison.incomeChangeMinor)">{{ signedAmount(comparison.incomeChangeMinor) }}</strong>
+        <small>较{{ comparison.previousLabel }} <b class="income-value">{{ formatMinor(comparison.previous.incomeMinor) }}</b> · {{ rateLabel(comparison.incomeChangeRate, '上期无收入') }}</small>
       </article>
       <article data-testid="stats-expense-change" class="change-card">
         <span>支出变化</span>
-        <strong :class="comparison.expenseChangeMinor <= 0 ? 'income-value' : 'expense-value'">{{ signedAmount(comparison.expenseChangeMinor) }}</strong>
-        <small>较{{ comparison.previousLabel }} {{ formatMinor(comparison.previous.expenseMinor) }} · {{ rateLabel(comparison.expenseChangeRate, '上期无支出') }}</small>
+        <strong :class="semanticValueClass(comparison.expenseChangeMinor, 'expense-value', 'income-value')">{{ signedAmount(comparison.expenseChangeMinor) }}</strong>
+        <small>较{{ comparison.previousLabel }} <b class="expense-value">{{ formatMinor(comparison.previous.expenseMinor) }}</b> · {{ rateLabel(comparison.expenseChangeRate, '上期无支出') }}</small>
       </article>
       <article data-testid="stats-balance-change" class="change-card">
         <span>结余变化</span>
-        <strong :class="comparison.balanceChangeMinor >= 0 ? 'income-value' : 'expense-value'">{{ signedAmount(comparison.balanceChangeMinor) }}</strong>
-        <small>较{{ comparison.previousLabel }}结余 {{ formatMinor(comparison.previous.balanceMinor) }}</small>
+        <strong :class="semanticValueClass(comparison.balanceChangeMinor)">{{ signedAmount(comparison.balanceChangeMinor) }}</strong>
+        <small>较{{ comparison.previousLabel }}结余 <b :class="semanticValueClass(comparison.previous.balanceMinor)">{{ formatMinor(comparison.previous.balanceMinor) }}</b></small>
       </article>
     </div>
 
@@ -327,7 +333,7 @@ function monthTitle(value: string): string {
             <strong>{{ selectedSubcategory.name }}流水</strong>
             <span>
               {{ detailsPeriodLabel }} · {{ selectedSubcategoryDetails.count }} 笔 ·
-              {{ formatMinor(selectedSubcategoryDetails.expenseMinor) }}
+              <b class="expense-value">{{ formatMinor(selectedSubcategoryDetails.expenseMinor) }}</b>
             </span>
           </div>
           <button
@@ -392,8 +398,10 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .cashflow-card.income { border-color: color-mix(in srgb, var(--income-color) 22%, var(--line)); background: linear-gradient(145deg, var(--income-soft), var(--surface)); }
 .change-card { padding: 11px 13px; border-radius: 15px; box-shadow: none; }
 .change-card strong { color: var(--ink); font-size: clamp(14px, 3.5vw, 20px); line-height: 1.15; white-space: nowrap; }
+.change-card small b, .details-header span b { font: inherit; }
 .income-value { color: var(--income-color) !important; }
 .expense-value { color: var(--expense-color) !important; }
+.neutral-value { color: var(--ink) !important; }
 .chart-card { margin-top: 14px; padding: 17px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-soft); }
 .chart-card > header { display: flex; align-items: start; justify-content: space-between; margin-bottom: 15px; }
 .chart-card header > div { display: grid; gap: 3px; }
