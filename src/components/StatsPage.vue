@@ -392,12 +392,12 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .cashflow-changes { margin-bottom: 14px; }
 .cashflow-card, .change-card { display: grid; min-width: 0; gap: 5px; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-soft); }
 .cashflow-card span, .change-card span { color: var(--muted); font-size: 10px; font-weight: 700; }
-.cashflow-card strong { color: var(--ink); font: 750 clamp(18px, 4.5vw, 29px)/1.1 var(--font-display); letter-spacing: -.045em; white-space: nowrap; }
+.cashflow-card strong { color: var(--ink); font: 750 clamp(18px, 4.5vw, 29px)/1.1 var(--font-display); letter-spacing: -.045em; overflow-wrap: anywhere; }
 .cashflow-card small, .change-card small { overflow: hidden; color: var(--muted); font-size: 8px; line-height: 1.4; text-overflow: ellipsis; }
 .cashflow-card.expense { border-color: color-mix(in srgb, var(--expense-color) 22%, var(--line)); background: linear-gradient(145deg, var(--expense-soft), var(--surface)); }
 .cashflow-card.income { border-color: color-mix(in srgb, var(--income-color) 22%, var(--line)); background: linear-gradient(145deg, var(--income-soft), var(--surface)); }
 .change-card { padding: 11px 13px; border-radius: 15px; box-shadow: none; }
-.change-card strong { color: var(--ink); font-size: clamp(14px, 3.5vw, 20px); line-height: 1.15; white-space: nowrap; }
+.change-card strong { color: var(--ink); font-size: clamp(14px, 3.5vw, 20px); line-height: 1.15; overflow-wrap: anywhere; }
 .change-card small b, .details-header span b { font: inherit; }
 .income-value { color: var(--income-color) !important; }
 .expense-value { color: var(--expense-color) !important; }

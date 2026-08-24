@@ -335,7 +335,7 @@ function closeDialog(): void {
         </form>
 
         <div v-else-if="dialog === 'categories'" class="category-manager">
-          <div v-for="category in categories.filter((item) => !item.deletedAt)" :key="category.id" class="category-row"><span>{{ category.icon }} {{ category.name }}</span><button type="button" @click="toggleCategory(category)">{{ category.status === 'active' ? '归档' : '恢复' }}</button></div>
+          <div v-for="category in categories.filter((item) => !item.deletedAt)" :key="category.id" class="category-row"><span>{{ category.icon }} {{ category.name }}</span><button type="button" :class="{ 'danger-action': category.status === 'active' }" @click="toggleCategory(category)">{{ category.status === 'active' ? '归档' : '恢复' }}</button></div>
           <form class="item-form" @submit.prevent="submitCategory"><div class="form-pair"><label>名称<input v-model="categoryForm.name" required maxlength="40"></label><label>图标<input v-model="categoryForm.icon" maxlength="4"></label></div><label>颜色<input v-model="categoryForm.color" type="color"></label><button class="dialog-primary" type="submit">新增分类</button></form>
         </div>
       </section>

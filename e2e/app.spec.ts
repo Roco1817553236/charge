@@ -75,15 +75,18 @@ test('shows income, expense and balance together in statistics', async ({ page }
   await expect(page.getByTestId('stats-current-balance')).toContainText('¥1.00')
   await expect(page.getByTestId('stats-current-income').locator('strong')).toHaveCSS('color', 'rgb(198, 40, 40)')
   await expect(page.getByTestId('stats-current-expense').locator('strong')).toHaveCSS('color', 'rgb(21, 128, 61)')
-  await page.waitForTimeout(400)
-  const clipped = await page.locator('.cashflow-card strong, .change-card strong').evaluateAll(
-    (nodes) => nodes.some((node) => {
-      const amount = node.getBoundingClientRect()
-      const card = node.closest('article')?.getBoundingClientRect()
-      return !card || amount.left < card.left || amount.right > card.right || amount.left < 0 || amount.right > innerWidth
-    }),
-  )
-  expect(clipped).toBe(false)
+  for (const width of [360, 414, 736]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.waitForTimeout(400)
+    const clipped = await page.locator('.cashflow-card strong, .change-card strong').evaluateAll(
+      (nodes) => nodes.some((node) => {
+        const amount = node.getBoundingClientRect()
+        const card = node.closest('article')?.getBoundingClientRect()
+        return !card || amount.left < card.left || amount.right > card.right || amount.left < 0 || amount.right > innerWidth
+      }),
+    )
+    expect(clipped, `${width}px cashflow amount clipping`).toBe(false)
+  }
 
   await page.getByTestId('nav-ledger').click()
   await expect(page.locator('.transaction-amount.income')).toHaveCSS('color', 'rgb(198, 40, 40)')
@@ -104,6 +107,22 @@ test('shows income, expense and balance together in statistics', async ({ page }
   expect(darkColors).toEqual({ income: 'rgb(255, 107, 107)', expense: 'rgb(74, 222, 128)' })
   await expect(page.locator('.transaction-amount.income')).toHaveCSS('color', 'rgb(255, 107, 107)')
   await expect(page.locator('.transaction-amount.expense')).toHaveCSS('color', 'rgb(74, 222, 128)')
+  await expect(page.locator('.day-totals .income-value')).toHaveCSS('color', 'rgb(255, 107, 107)')
+  await expect(page.locator('.day-totals .expense-value')).toHaveCSS('color', 'rgb(74, 222, 128)')
+
+  await page.getByTestId('nav-stats').click()
+  await expect(page.getByTestId('stats-current-income').locator('strong')).toHaveCSS('color', 'rgb(255, 107, 107)')
+  await expect(page.getByTestId('stats-current-expense').locator('strong')).toHaveCSS('color', 'rgb(74, 222, 128)')
+  await expect(page.locator('[data-testid="expense-category-card"] .expense-value').first()).toHaveCSS('color', 'rgb(74, 222, 128)')
+
+  await page.getByTestId('nav-entry').click()
+  await page.getByTestId('amount-input').fill('1.00')
+  await page.getByRole('button', { name: /工资/ }).click()
+  await expect(page.getByTestId('amount-input')).toHaveCSS('color', 'rgb(255, 107, 107)')
+  await expect(page.getByTestId('save-entry').locator('.save-button')).toHaveCSS('background-color', 'rgb(255, 107, 107)')
+
+  await page.getByTestId('nav-items').click()
+  await expect(page.getByTestId('item-total-cost')).toHaveCSS('color', 'rgb(74, 222, 128)')
 })
 
 test('keeps edit identity across reload and overwrites the original row', async ({ page }) => {

@@ -113,7 +113,10 @@ describe('ItemPage', () => {
   it('restores an archived item category from the category manager', async () => {
     const view = wrapper()
     await view.get('button[aria-label="管理物品分类"]').trigger('click')
+    const activeRow = view.findAll('.category-row').find((entry) => entry.text().includes('数码'))!
+    expect(activeRow.get('button').classes()).toContain('danger-action')
     const row = view.findAll('.category-row').find((entry) => entry.text().includes('旧分类'))!
+    expect(row.get('button').classes()).not.toContain('danger-action')
     await row.get('button').trigger('click')
 
     expect(view.emitted('save-category')?.[0]?.[0]).toMatchObject({ id: 'old', status: 'active' })
