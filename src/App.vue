@@ -37,6 +37,7 @@ const settingsOpen = ref(false)
 const duplicateCandidates = ref<Transaction[]>([])
 const duplicateConfirming = ref(false)
 const duplicateCancelButton = ref<HTMLButtonElement | null>(null)
+const duplicateConfirmButton = ref<HTMLButtonElement | null>(null)
 const updateController = new PwaUpdateController()
 const updateState = updateController.state
 const appVersion = import.meta.env.VITE_APP_VERSION || '1.6.0'
@@ -86,6 +87,8 @@ async function saveDraft(value: EntryDraft): Promise<void> {
   try {
     const duplicates = store.previewDuplicateEntry()
     if (duplicates.length > 0) {
+      store.error = null
+      store.clearToast()
       duplicateCandidates.value = duplicates
       await nextTick()
       duplicateCancelButton.value?.focus()
@@ -106,8 +109,11 @@ function duplicateCategoryLabel(transaction: Transaction): string {
   return root?.name ?? child?.name ?? '未知分类'
 }
 
-function cancelDuplicateSave(): void {
+async function cancelDuplicateSave(): Promise<void> {
+  if (duplicateConfirming.value) return
   duplicateCandidates.value = []
+  await nextTick()
+  document.querySelector<HTMLButtonElement>('[data-testid="save-entry"] .save-button')?.focus()
 }
 
 async function confirmDuplicateSave(): Promise<void> {
@@ -116,10 +122,31 @@ async function confirmDuplicateSave(): Promise<void> {
   try {
     await store.saveEntry()
     duplicateCandidates.value = []
+    await nextTick()
+    document.querySelector<HTMLInputElement>('[data-testid="amount-input"]')?.focus()
   } catch {
     // Store error remains visible while the draft and confirmation stay intact.
   } finally {
     duplicateConfirming.value = false
+  }
+}
+
+function handleDuplicateDialogKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    void cancelDuplicateSave()
+    return
+  }
+  if (event.key !== 'Tab') return
+  const first = duplicateCancelButton.value
+  const last = duplicateConfirmButton.value
+  if (!first || !last) return
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
   }
 }
 
@@ -278,6 +305,7 @@ function applyAvailableUpdate(): void {
     </div>
 
     <template v-else>
+      <div class="app-interaction-layer" :inert="duplicateCandidates.length > 0">
       <button class="settings-button" type="button" aria-label="打开设置与备份" title="设置与备份" @click="settingsOpen = true">
         <span aria-hidden="true">⚙</span>
       </button>
@@ -369,54 +397,6 @@ function applyAvailableUpdate(): void {
         </div>
       </Transition>
 
-      <Transition name="drawer">
-        <div v-if="duplicateCandidates.length" class="dialog-backdrop">
-          <section
-            data-testid="duplicate-entry-dialog"
-            class="duplicate-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="duplicate-entry-title"
-          >
-            <div class="duplicate-dialog-heading">
-              <span aria-hidden="true">≋</span>
-              <div>
-                <h2 id="duplicate-entry-title">疑似重复账单</h2>
-                <p>同一天、同金额的{{ draft.type === 'expense' ? '支出' : '收入' }}已有 {{ duplicateCandidates.length }} 笔。</p>
-              </div>
-            </div>
-            <div class="duplicate-list">
-              <article v-for="transaction in duplicateCandidates.slice(0, 3)" :key="transaction.id">
-                <div>
-                  <strong>{{ duplicateCategoryLabel(transaction) }}</strong>
-                  <span>{{ transaction.note || '无备注' }}</span>
-                </div>
-                <b>{{ formatMinor(transaction.amountMinor) }}</b>
-              </article>
-              <p v-if="duplicateCandidates.length > 3" class="duplicate-more">
-                另有 {{ duplicateCandidates.length - 3 }} 笔相同记录
-              </p>
-            </div>
-            <div class="duplicate-actions">
-              <button
-                ref="duplicateCancelButton"
-                data-testid="duplicate-entry-cancel"
-                type="button"
-                :disabled="duplicateConfirming"
-                @click="cancelDuplicateSave"
-              >返回检查</button>
-              <button
-                data-testid="duplicate-entry-confirm"
-                class="primary"
-                type="button"
-                :disabled="duplicateConfirming"
-                @click="confirmDuplicateSave"
-              >{{ duplicateConfirming ? '保存中…' : '仍然保存' }}</button>
-            </div>
-          </section>
-        </div>
-      </Transition>
-
       <Transition name="toast">
         <div v-if="toast && pageIndex !== 3" class="toast-message" role="status">
           <span>{{ toast.message }}</span>
@@ -437,6 +417,58 @@ function applyAvailableUpdate(): void {
 
       <div v-if="error" class="error-banner" role="alert"><span>!</span>{{ error }}</div>
       <div v-else-if="itemError" class="error-banner" role="alert"><span>!</span>{{ itemError }}</div>
+      </div>
+
+      <Transition name="drawer">
+        <div v-if="duplicateCandidates.length" class="dialog-backdrop">
+          <section
+            data-testid="duplicate-entry-dialog"
+            class="duplicate-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="duplicate-entry-title"
+            @keydown="handleDuplicateDialogKeydown"
+          >
+            <div class="duplicate-dialog-heading">
+              <span aria-hidden="true">≋</span>
+              <div>
+                <h2 id="duplicate-entry-title">疑似重复账单</h2>
+                <p>同一天、同金额的{{ draft.type === 'expense' ? '支出' : '收入' }}已有 {{ duplicateCandidates.length }} 笔。</p>
+              </div>
+            </div>
+            <div class="duplicate-list">
+              <article v-for="transaction in duplicateCandidates.slice(0, 3)" :key="transaction.id">
+                <div>
+                  <strong>{{ duplicateCategoryLabel(transaction) }}</strong>
+                  <span>{{ transaction.note || '无备注' }}</span>
+                </div>
+                <b>{{ formatMinor(transaction.amountMinor) }}</b>
+              </article>
+              <p v-if="duplicateCandidates.length > 3" class="duplicate-more">
+                另有 {{ duplicateCandidates.length - 3 }} 笔相同记录
+              </p>
+            </div>
+            <p v-if="error" class="duplicate-error" role="alert">{{ error }}</p>
+            <div class="duplicate-actions">
+              <button
+                ref="duplicateCancelButton"
+                data-testid="duplicate-entry-cancel"
+                type="button"
+                :disabled="duplicateConfirming"
+                @click="cancelDuplicateSave"
+              >返回检查</button>
+              <button
+                ref="duplicateConfirmButton"
+                data-testid="duplicate-entry-confirm"
+                class="primary"
+                type="button"
+                :disabled="duplicateConfirming"
+                @click="confirmDuplicateSave"
+              >{{ duplicateConfirming ? '保存中…' : '仍然保存' }}</button>
+            </div>
+          </section>
+        </div>
+      </Transition>
     </template>
   </div>
 </template>
@@ -448,8 +480,9 @@ function applyAvailableUpdate(): void {
 .drawer-backdrop { position: fixed; z-index: 45; inset: 0; display: flex; justify-content: end; background: rgb(15 23 42 / 34%); backdrop-filter: blur(4px); }.drawer-panel { width: min(100%, 520px); height: 100%; overflow-y: auto; background: var(--app-bg); box-shadow: -24px 0 70px rgb(15 23 42 / 18%); }
 .dialog-backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 42%); backdrop-filter: blur(5px); }
 .duplicate-dialog { width: min(100%, 430px); max-height: min(82dvh, 620px); overflow-y: auto; padding: 20px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); color: var(--ink); box-shadow: 0 28px 80px rgb(15 23 42 / 28%); }
-.duplicate-dialog-heading { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; align-items: start; }.duplicate-dialog-heading > span { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 14px; background: var(--expense-soft); color: var(--expense-color); font-size: 24px; font-weight: 800; }.duplicate-dialog h2 { margin: 1px 0 5px; font-size: 19px; }.duplicate-dialog-heading p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.duplicate-dialog-heading { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; align-items: start; }.duplicate-dialog-heading > span { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 14px; background: var(--accent-soft); color: var(--accent-strong); font-size: 24px; font-weight: 800; }.duplicate-dialog h2 { margin: 1px 0 5px; font-size: 19px; }.duplicate-dialog-heading p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .duplicate-list { display: grid; gap: 8px; margin: 18px 0; }.duplicate-list article { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }.duplicate-list article div { display: grid; min-width: 0; gap: 3px; }.duplicate-list strong, .duplicate-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.duplicate-list strong { font-size: 12px; }.duplicate-list span { color: var(--muted); font-size: 10px; }.duplicate-list b { color: v-bind("draft.type === 'expense' ? 'var(--expense-color)' : 'var(--income-color)'"); font-size: 13px; white-space: nowrap; }.duplicate-more { margin: 0; color: var(--muted); font-size: 10px; text-align: center; }
+.duplicate-error { margin: -6px 0 14px; padding: 9px 11px; border: 1px solid #FECACA; border-radius: 11px; background: #FEF2F2; color: #991B1B; font-size: 10px; font-weight: 700; line-height: 1.45; }
 .duplicate-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.duplicate-actions button { min-height: 44px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); color: var(--ink); font-weight: 750; }.duplicate-actions button.primary { border-color: transparent; background: var(--accent); color: white; }.duplicate-actions button:disabled { cursor: wait; opacity: .65; }
 .toast-message { position: fixed; z-index: 70; right: 16px; bottom: calc(max(82px, env(safe-area-inset-bottom) + 82px)); left: 16px; display: flex; max-width: 440px; align-items: center; justify-content: space-between; gap: 12px; margin: auto; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); border-radius: 15px; background: color-mix(in srgb, var(--ink) 94%, transparent); color: var(--surface); box-shadow: 0 18px 45px rgb(15 23 42 / 24%); font-size: 12px; font-weight: 650; backdrop-filter: blur(10px); }.toast-message button { border: 0; background: transparent; color: #C7D2FE; font-weight: 800; }
 .error-banner { position: fixed; z-index: 65; top: 60px; right: 16px; left: 16px; display: flex; max-width: 520px; align-items: center; gap: 8px; margin: auto; padding: 11px 13px; border: 1px solid #FECACA; border-radius: 13px; background: #FEF2F2; color: #991B1B; font-size: 11px; box-shadow: var(--shadow-soft); }.error-banner span { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; background: #DC2626; color: white; font-weight: 800; }

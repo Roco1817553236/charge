@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('shows latest activity, suggests subcategories, and confirms possible duplicates', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 })
   await page.goto('/')
   await expect(page.getByTestId('latest-bookkeeping-time')).toHaveText('暂无记账')
 
@@ -27,12 +28,21 @@ test('shows latest activity, suggests subcategories, and confirms possible dupli
   await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
   const dialog = page.getByTestId('duplicate-entry-dialog')
   await expect(dialog).toContainText('疑似重复账单')
-  const overlayLevels = await page.evaluate(() => ({
-    dialog: Number.parseInt(getComputedStyle(document.querySelector('.dialog-backdrop')!).zIndex, 10),
-    toast: Number.parseInt(getComputedStyle(document.querySelector('.toast-message')!).zIndex, 10),
-  }))
-  expect(overlayLevels.dialog).toBeGreaterThan(overlayLevels.toast)
-  await dialog.getByRole('button', { name: '返回检查' }).click()
+  const dialogFitsViewport = await dialog.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight
+  })
+  expect(dialogFitsViewport).toBe(true)
+  await expect(page.locator('.app-interaction-layer')).toHaveAttribute('inert', '')
+  await expect(page.locator('.toast-message')).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: '返回检查' })).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(dialog.getByRole('button', { name: '仍然保存' })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(dialog.getByRole('button', { name: '返回检查' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('save-entry').getByRole('button', { name: '保存支出' })).toBeFocused()
   await expect(page.getByTestId('amount-input')).toHaveValue('20.00')
 
   await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()

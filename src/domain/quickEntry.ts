@@ -75,9 +75,9 @@ export function suggestSubcategory(
     .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, 'zh-CN'))
   const fallback = children[0]?.id ?? null
   if (root.type !== 'expense' || root.name !== '餐饮') return fallback
+  if (amountMinor === undefined) return fallback
 
-  const targetName = amountMinor === undefined || amountMinor <= 800
-    ? '早餐'
+  const targetName = amountMinor <= 800 ? '早餐'
     : amountMinor <= 1300 ? '晚餐' : '正餐'
   return children.find((category) => category.name === targetName)?.id ?? fallback
 }

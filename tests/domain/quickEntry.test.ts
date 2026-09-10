@@ -89,4 +89,14 @@ describe('quick entry domain rules', () => {
     const archivedBreakfast = categories.map((category) => category.id === 'breakfast' ? { ...category, status: 'archived' as const } : category)
     expect(suggestSubcategory(archivedBreakfast, archivedBreakfast[0]!, 500)).toBe('main-meal')
   })
+
+  it('uses the first sorted dining child when the amount is empty or invalid', () => {
+    const reordered = categories.map((category) => {
+      if (category.id === 'dinner') return { ...category, sortOrder: 0 }
+      if (category.id === 'breakfast') return { ...category, sortOrder: 3 }
+      return category
+    })
+
+    expect(suggestSubcategory(reordered, reordered[0]!, undefined)).toBe('dinner')
+  })
 })
