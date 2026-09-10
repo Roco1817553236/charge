@@ -85,11 +85,15 @@ describe('QuickEntryPage', () => {
     expect(wrapper.get('[data-testid="subcategory-dinner"]').classes()).toContain('selected')
   })
 
-  it('shows the latest bookkeeping label below the page heading', () => {
-    const timestamp = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 14, 32).toISOString()
-    const wrapper = mount(QuickEntryPage, { props: { categories, draft, latestBookkeepingTimestamp: timestamp } })
+  it('shows the latest bookkeeping label below the page heading and refreshes after midnight', async () => {
+    const timestamp = new Date(2026, 8, 10, 14, 32).toISOString()
+    const wrapper = mount(QuickEntryPage, {
+      props: { categories, draft, latestBookkeepingTimestamp: timestamp, currentLocalDate: '2026-09-10' },
+    })
 
     expect(wrapper.get('[data-testid="latest-bookkeeping-time"]').text()).toBe('最后记账：今天 14:32')
+    await wrapper.setProps({ currentLocalDate: '2026-09-11' })
+    expect(wrapper.get('[data-testid="latest-bookkeeping-time"]').text()).toBe('最后记账：昨天 14:32')
   })
 
   it('switches to income categories and keeps advanced fields available', async () => {

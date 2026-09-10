@@ -289,6 +289,7 @@ function applyAvailableUpdate(): void {
             :draft="draft"
             :saving="saving"
             :latest-bookkeeping-timestamp="store.latestBookkeepingTimestamp"
+            :current-local-date="today"
             @update:draft="store.updateDraft"
             @save="saveDraft"
             @manage-categories="categoryManagerOpen = true"

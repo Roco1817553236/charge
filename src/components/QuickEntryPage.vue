@@ -10,7 +10,8 @@ const props = withDefaults(defineProps<{
   draft: EntryDraft
   saving?: boolean
   latestBookkeepingTimestamp?: string | null
-}>(), { saving: false, latestBookkeepingTimestamp: null })
+  currentLocalDate?: string
+}>(), { saving: false, latestBookkeepingTimestamp: null, currentLocalDate: '' })
 
 const emit = defineEmits<{
   save: [draft: EntryDraft]
@@ -31,7 +32,13 @@ watch(() => props.draft, (draft) => {
   if (draft.note.trim()) detailsOpen.value = true
 }, { deep: true })
 
-const latestBookkeepingLabel = computed(() => formatLastBookkeepingTime(props.latestBookkeepingTimestamp))
+const latestBookkeepingLabel = computed(() => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(props.currentLocalDate)
+  const reference = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12)
+    : new Date()
+  return formatLastBookkeepingTime(props.latestBookkeepingTimestamp, reference)
+})
 
 const roots = computed(() => props.categories
   .filter((category) => category.type === form.type && category.parentId === null && category.status === 'active')
