@@ -27,6 +27,11 @@ test('shows latest activity, suggests subcategories, and confirms possible dupli
   await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
   const dialog = page.getByTestId('duplicate-entry-dialog')
   await expect(dialog).toContainText('疑似重复账单')
+  const overlayLevels = await page.evaluate(() => ({
+    dialog: Number.parseInt(getComputedStyle(document.querySelector('.dialog-backdrop')!).zIndex, 10),
+    toast: Number.parseInt(getComputedStyle(document.querySelector('.toast-message')!).zIndex, 10),
+  }))
+  expect(overlayLevels.dialog).toBeGreaterThan(overlayLevels.toast)
   await dialog.getByRole('button', { name: '返回检查' }).click()
   await expect(page.getByTestId('amount-input')).toHaveValue('20.00')
 
