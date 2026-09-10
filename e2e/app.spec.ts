@@ -1,5 +1,42 @@
 import { expect, test } from '@playwright/test'
 
+test('shows latest activity, suggests subcategories, and confirms possible duplicates', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByTestId('latest-bookkeeping-time')).toHaveText('暂无记账')
+
+  await page.getByTestId('amount-input').fill('8.00')
+  await page.getByRole('button', { name: /餐饮/ }).click()
+  await expect(page.getByTestId('subcategory-10000000-0000-4000-8000-000000000002')).toHaveClass(/selected/)
+
+  await page.getByTestId('amount-input').fill('8.01')
+  await expect(page.getByRole('button', { name: '晚餐', exact: true })).toHaveClass(/selected/)
+  await page.getByTestId('amount-input').fill('13.01')
+  await expect(page.getByRole('button', { name: '正餐', exact: true })).toHaveClass(/selected/)
+
+  await page.getByRole('button', { name: '早餐', exact: true }).click()
+  await page.getByTestId('amount-input').fill('20.00')
+  await expect(page.getByRole('button', { name: '早餐', exact: true })).toHaveClass(/selected/)
+  await page.getByRole('button', { name: /餐饮/ }).click()
+  await expect(page.getByRole('button', { name: '正餐', exact: true })).toHaveClass(/selected/)
+
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+  await expect(page.getByTestId('latest-bookkeeping-time')).toContainText('最后记账：今天')
+
+  await page.getByTestId('amount-input').fill('20.00')
+  await page.getByRole('button', { name: /餐饮/ }).click()
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+  const dialog = page.getByTestId('duplicate-entry-dialog')
+  await expect(dialog).toContainText('疑似重复账单')
+  await dialog.getByRole('button', { name: '返回检查' }).click()
+  await expect(page.getByTestId('amount-input')).toHaveValue('20.00')
+
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+  await page.getByTestId('duplicate-entry-confirm').click()
+  await expect(dialog).toHaveCount(0)
+  await page.getByTestId('nav-ledger').click()
+  await expect(page.locator('.transaction-row')).toHaveCount(2)
+})
+
 test('records a transaction and exposes it in the ledger and statistics', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: '记一笔' })).toBeVisible()

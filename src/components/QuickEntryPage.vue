@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import type { Category, TransactionType } from '../domain/models'
+import { parseAmountToMinor } from '../domain/money'
+import { formatLastBookkeepingTime, suggestSubcategory } from '../domain/quickEntry'
 import type { EntryDraft } from '../stores/bookStore'
 
 const props = withDefaults(defineProps<{
   categories: Category[]
   draft: EntryDraft
   saving?: boolean
-}>(), { saving: false })
+  latestBookkeepingTimestamp?: string | null
+}>(), { saving: false, latestBookkeepingTimestamp: null })
 
 const emit = defineEmits<{
   save: [draft: EntryDraft]
@@ -18,11 +21,17 @@ const emit = defineEmits<{
 const form = reactive<EntryDraft>({ ...props.draft })
 const detailsOpen = ref(Boolean(props.draft.note.trim()))
 const moreOpen = ref(false)
+const automaticSubcategory = ref(false)
 
 watch(() => props.draft, (draft) => {
+  const changedExternally = (Object.keys(draft) as Array<keyof EntryDraft>)
+    .some((key) => draft[key] !== form[key])
   Object.assign(form, draft)
+  if (changedExternally) automaticSubcategory.value = false
   if (draft.note.trim()) detailsOpen.value = true
 }, { deep: true })
+
+const latestBookkeepingLabel = computed(() => formatLastBookkeepingTime(props.latestBookkeepingTimestamp))
 
 const roots = computed(() => props.categories
   .filter((category) => category.type === form.type && category.parentId === null && category.status === 'active')
@@ -49,18 +58,39 @@ function setType(type: TransactionType): void {
   form.type = type
   form.categoryId = null
   form.subcategoryId = null
+  automaticSubcategory.value = false
   moreOpen.value = false
   publish()
 }
 
 function selectRoot(category: Category): void {
   form.categoryId = category.id
-  form.subcategoryId = null
+  automaticSubcategory.value = true
+  form.subcategoryId = suggestSubcategory(props.categories, category, parsedAmountMinor())
   publish()
 }
 
 function selectChild(category: Category): void {
+  automaticSubcategory.value = false
   form.subcategoryId = form.subcategoryId === category.id ? null : category.id
+  publish()
+}
+
+function parsedAmountMinor(): number | undefined {
+  try {
+    return parseAmountToMinor(form.amount)
+  } catch {
+    return undefined
+  }
+}
+
+function updateAmount(): void {
+  if (automaticSubcategory.value && form.categoryId) {
+    const root = roots.value.find((category) => category.id === form.categoryId)
+    if (root?.name === '餐饮') {
+      form.subcategoryId = suggestSubcategory(props.categories, root, parsedAmountMinor())
+    }
+  }
   publish()
 }
 
@@ -76,6 +106,7 @@ function submit(): void {
       <div>
         <p class="eyebrow">QUICK ENTRY</p>
         <h1 id="entry-title">记一笔</h1>
+        <p data-testid="latest-bookkeeping-time" class="latest-bookkeeping-time">{{ latestBookkeepingLabel }}</p>
       </div>
       <button class="icon-button" type="button" aria-label="管理分类" @click="emit('manage-categories')">⚙</button>
     </header>
@@ -106,7 +137,7 @@ function submit(): void {
           inputmode="decimal"
           autocomplete="off"
           placeholder="0.00"
-          @input="publish"
+          @input="updateAmount"
         >
       </label>
 
@@ -178,6 +209,7 @@ function submit(): void {
 .entry-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .eyebrow { margin: 0 0 4px; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .18em; }
 h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spacing: -.05em; }
+.latest-bookkeeping-time { margin: 6px 0 0; color: var(--muted); font-size: 11px; font-weight: 650; }
 .icon-button { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); color: var(--muted); font-size: 19px; box-shadow: var(--shadow-soft); }
 .entry-card { padding: 18px; border: 1px solid var(--line); border-radius: 28px; background: var(--surface); box-shadow: var(--shadow-card); }
 .type-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 4px; border-radius: 14px; background: var(--surface-2); }

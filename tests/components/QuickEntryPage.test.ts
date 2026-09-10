@@ -12,8 +12,11 @@ const base = {
 }
 const categories: Category[] = [
   { ...base, id: 'food', parentId: null, name: '餐饮' },
-  { ...base, id: 'lunch', parentId: 'food', name: '正餐', isPinned: false },
+  { ...base, id: 'breakfast', parentId: 'food', name: '早餐', isPinned: false },
+  { ...base, id: 'lunch', parentId: 'food', name: '正餐', sortOrder: 1, isPinned: false },
+  { ...base, id: 'dinner', parentId: 'food', name: '晚餐', sortOrder: 2, isPinned: false },
   { ...base, id: 'transport', parentId: null, name: '交通', icon: '🚇', color: '#0EA5E9', sortOrder: 1 },
+  { ...base, id: 'metro', parentId: 'transport', name: '公交地铁', icon: '🚇', color: '#0EA5E9', isPinned: false },
 ]
 const draft: EntryDraft = {
   type: 'expense', amount: '', categoryId: null, subcategoryId: null,
@@ -34,12 +37,59 @@ describe('QuickEntryPage', () => {
     await wrapper.get('[data-testid="amount-input"]').setValue('25.80')
     await wrapper.get('[data-testid="category-food"]').trigger('click')
     expect(wrapper.text()).toContain('正餐')
-    await wrapper.get('[data-testid="subcategory-lunch"]').trigger('click')
+    expect(wrapper.get('[data-testid="subcategory-lunch"]').classes()).toContain('selected')
     await wrapper.get('[data-testid="save-entry"]').trigger('submit')
 
     expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({
       type: 'expense', amount: '25.80', categoryId: 'food', subcategoryId: 'lunch',
     })
+  })
+
+  it('selects the first active child when an ordinary root is clicked', async () => {
+    const wrapper = mount(QuickEntryPage, { props: { categories, draft } })
+
+    await wrapper.get('[data-testid="category-transport"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="subcategory-metro"]').classes()).toContain('selected')
+    expect(wrapper.emitted('update:draft')?.at(-1)?.[0]).toMatchObject({
+      categoryId: 'transport', subcategoryId: 'metro',
+    })
+  })
+
+  it('automatically classifies dining amounts until the user manually chooses a child', async () => {
+    const wrapper = mount(QuickEntryPage, { props: { categories, draft } })
+
+    await wrapper.get('[data-testid="amount-input"]').setValue('8')
+    await wrapper.get('[data-testid="category-food"]').trigger('click')
+    expect(wrapper.get('[data-testid="subcategory-breakfast"]').classes()).toContain('selected')
+
+    await wrapper.get('[data-testid="amount-input"]').setValue('8.01')
+    expect(wrapper.get('[data-testid="subcategory-dinner"]').classes()).toContain('selected')
+    await wrapper.get('[data-testid="amount-input"]').setValue('13.01')
+    expect(wrapper.get('[data-testid="subcategory-lunch"]').classes()).toContain('selected')
+
+    await wrapper.get('[data-testid="subcategory-breakfast"]').trigger('click')
+    await wrapper.get('[data-testid="amount-input"]').setValue('30')
+    expect(wrapper.get('[data-testid="subcategory-breakfast"]').classes()).toContain('selected')
+
+    await wrapper.get('[data-testid="category-food"]').trigger('click')
+    expect(wrapper.get('[data-testid="subcategory-lunch"]').classes()).toContain('selected')
+  })
+
+  it('keeps the subcategory from an existing edit or copied draft', async () => {
+    const existingDraft = { ...draft, amount: '20', categoryId: 'food', subcategoryId: 'dinner' }
+    const wrapper = mount(QuickEntryPage, { props: { categories, draft: existingDraft } })
+
+    await wrapper.get('[data-testid="amount-input"]').setValue('30')
+
+    expect(wrapper.get('[data-testid="subcategory-dinner"]').classes()).toContain('selected')
+  })
+
+  it('shows the latest bookkeeping label below the page heading', () => {
+    const timestamp = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 14, 32).toISOString()
+    const wrapper = mount(QuickEntryPage, { props: { categories, draft, latestBookkeepingTimestamp: timestamp } })
+
+    expect(wrapper.get('[data-testid="latest-bookkeeping-time"]').text()).toBe('最后记账：今天 14:32')
   })
 
   it('switches to income categories and keeps advanced fields available', async () => {

@@ -99,9 +99,9 @@ function onImport(event: Event): void {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>全应用统一为收入红色、支出绿色，符合红入绿出习惯</li>
-          <li>正结余红、负结余绿；收入/支出变化按同一规则显示</li>
-          <li>删除和报错继续使用独立警示红，分类颜色与紫色导航不变</li>
+          <li>首页显示最近一次有效记账或编辑时间</li>
+          <li>同一天、同金额、同收支类型的疑似重复账单会在保存前提醒</li>
+          <li>点击大类默认选择首个小类，餐饮可按金额智能选择早餐、晚餐或正餐</li>
         </ul>
       </details>
     </section>

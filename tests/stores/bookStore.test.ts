@@ -84,6 +84,47 @@ describe('book store', () => {
     expect(repository.softDeleteTransaction).toHaveBeenCalledWith(saved.id)
   })
 
+  it('derives the latest bookkeeping timestamp from active transactions', async () => {
+    const repository = fakeRepository()
+    vi.mocked(repository.listTransactions).mockResolvedValue([
+      saved,
+      { ...saved, id: 'tx-2', updatedAt: '2026-08-14T03:20:00.000Z' },
+      { ...saved, id: 'tx-3', updatedAt: '2026-08-14T04:20:00.000Z', deletedAt: '2026-08-14T05:00:00.000Z' },
+    ])
+    setBookRepository(repository)
+    const store = useBookStore()
+    await store.initialize()
+
+    expect(store.latestBookkeepingTimestamp).toBe('2026-08-14T03:20:00.000Z')
+  })
+
+  it('previews same-type same-date same-amount duplicates and excludes the edited row', async () => {
+    const repository = fakeRepository()
+    vi.mocked(repository.listTransactions).mockResolvedValue([saved])
+    setBookRepository(repository)
+    const store = useBookStore()
+    await store.initialize()
+    store.updateDraft({
+      type: 'expense', amount: '25.80', categoryId: 'food', subcategoryId: null,
+      date: '2026-08-14', time: '22:45', note: '另一笔',
+    })
+
+    expect(store.previewDuplicateEntry().map((row) => row.id)).toEqual([saved.id])
+
+    store.beginEdit(saved)
+    expect(store.previewDuplicateEntry()).toEqual([])
+  })
+
+  it('skips duplicate preview for an invalid amount so normal save validation can report it', async () => {
+    const repository = fakeRepository()
+    setBookRepository(repository)
+    const store = useBookStore()
+    await store.initialize()
+    store.updateDraft({ ...store.draft, amount: 'not-money', categoryId: 'food' })
+
+    expect(store.previewDuplicateEntry()).toEqual([])
+  })
+
   it('restores an editing draft identity after reload and updates instead of duplicating', async () => {
     const repository = fakeRepository()
     vi.mocked(repository.listTransactions).mockResolvedValue([saved])
