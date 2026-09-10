@@ -1,5 +1,57 @@
 import { expect, test } from '@playwright/test'
 
+test('shows latest activity, suggests subcategories, and confirms possible duplicates', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 })
+  await page.goto('/')
+  await expect(page.getByTestId('latest-bookkeeping-time')).toHaveText('暂无记账')
+
+  await page.getByTestId('amount-input').fill('8.00')
+  await page.getByRole('button', { name: /餐饮/ }).click()
+  await expect(page.getByTestId('subcategory-10000000-0000-4000-8000-000000000002')).toHaveClass(/selected/)
+
+  await page.getByTestId('amount-input').fill('8.01')
+  await expect(page.getByRole('button', { name: '晚餐', exact: true })).toHaveClass(/selected/)
+  await page.getByTestId('amount-input').fill('13.01')
+  await expect(page.getByRole('button', { name: '正餐', exact: true })).toHaveClass(/selected/)
+
+  await page.getByRole('button', { name: '早餐', exact: true }).click()
+  await page.getByTestId('amount-input').fill('20.00')
+  await expect(page.getByRole('button', { name: '早餐', exact: true })).toHaveClass(/selected/)
+  await page.getByRole('button', { name: /餐饮/ }).click()
+  await expect(page.getByRole('button', { name: '正餐', exact: true })).toHaveClass(/selected/)
+
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+  await expect(page.getByTestId('latest-bookkeeping-time')).toContainText('最后记账：今天')
+
+  await page.getByTestId('amount-input').fill('20.00')
+  await page.getByRole('button', { name: /餐饮/ }).click()
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+  const dialog = page.getByTestId('duplicate-entry-dialog')
+  await expect(dialog).toContainText('疑似重复账单')
+  const dialogFitsViewport = await dialog.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight
+  })
+  expect(dialogFitsViewport).toBe(true)
+  await expect(page.locator('.app-interaction-layer')).toHaveAttribute('inert', '')
+  await expect(page.locator('.toast-message')).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: '返回检查' })).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(dialog.getByRole('button', { name: '仍然保存' })).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(dialog.getByRole('button', { name: '返回检查' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('save-entry').getByRole('button', { name: '保存支出' })).toBeFocused()
+  await expect(page.getByTestId('amount-input')).toHaveValue('20.00')
+
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+  await page.getByTestId('duplicate-entry-confirm').click()
+  await expect(dialog).toHaveCount(0)
+  await page.getByTestId('nav-ledger').click()
+  await expect(page.locator('.transaction-row')).toHaveCount(2)
+})
+
 test('records a transaction and exposes it in the ledger and statistics', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: '记一笔' })).toBeVisible()

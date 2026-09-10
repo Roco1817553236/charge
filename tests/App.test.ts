@@ -13,6 +13,11 @@ const category: Category = {
   id: 'food', type: 'expense', parentId: null, name: '餐饮', icon: '🍜', color: '#F97316', sortOrder: 0,
   isPinned: true, status: 'active', revision: { counter: 1, deviceId: 'a' }, createdAt: now, updatedAt: now,
 }
+const existingTransaction: Transaction = {
+  id: 'existing-tx', type: 'expense', amountMinor: 1880, currency: 'CNY', categoryId: 'food', subcategoryId: null,
+  occurredLocalDate: '2026-08-14', occurredLocalTime: '08:10', timeZone: 'Asia/Shanghai', note: '已有早餐',
+  createdAt: now, updatedAt: now, revision: { counter: 1, deviceId: 'a' },
+}
 function repository(): BookRepository {
   return {
     initialize: vi.fn().mockResolvedValue(undefined),
@@ -71,6 +76,83 @@ describe('App', () => {
     expect(wrapper.text()).toContain('设置与备份')
     expect(wrapper.text()).toContain('数据仅保存在当前浏览器')
     expect(wrapper.text()).not.toContain('OneDrive')
+  })
+
+  it('warns about a same-type same-date same-amount entry and lets the user return or save once', async () => {
+    const repo = repository()
+    vi.mocked(repo.listTransactions).mockResolvedValue([existingTransaction])
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="amount-input"]').setValue('18.80')
+    await wrapper.get('[data-testid="category-food"]').trigger('click')
+    await wrapper.get('[data-testid="entry-details-toggle"]').trigger('click')
+    await wrapper.get('input[aria-label="日期"]').setValue('2026-08-14')
+    await wrapper.get('[data-testid="save-entry"]').trigger('submit')
+    await flushPromises()
+
+    const dialog = wrapper.get('[data-testid="duplicate-entry-dialog"]')
+    expect(dialog.attributes('role')).toBe('dialog')
+    expect(dialog.text()).toContain('疑似重复账单')
+    expect(dialog.text()).toContain('餐饮')
+    expect(dialog.text()).toContain('已有早餐')
+    expect(repo.addTransaction).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="duplicate-entry-cancel"]').trigger('click')
+    expect(wrapper.find('[data-testid="duplicate-entry-dialog"]').exists()).toBe(false)
+    expect((wrapper.get('[data-testid="amount-input"]').element as HTMLInputElement).value).toBe('18.80')
+
+    await wrapper.get('[data-testid="save-entry"]').trigger('submit')
+    await wrapper.get('[data-testid="duplicate-entry-confirm"]').trigger('click')
+    expect(wrapper.get('[data-testid="duplicate-entry-confirm"]').attributes()).toHaveProperty('disabled')
+    await wrapper.get('[data-testid="duplicate-entry-confirm"]').trigger('click')
+    await flushPromises()
+
+    expect(repo.addTransaction).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="duplicate-entry-dialog"]').exists()).toBe(false)
+  })
+
+  it('keeps a failed duplicate confirmation open and displays the save error inside it', async () => {
+    const repo = repository()
+    vi.mocked(repo.listTransactions).mockResolvedValue([existingTransaction])
+    vi.mocked(repo.addTransaction).mockRejectedValue(new Error('本地空间不足，未能保存'))
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="amount-input"]').setValue('18.80')
+    await wrapper.get('[data-testid="category-food"]').trigger('click')
+    await wrapper.get('[data-testid="entry-details-toggle"]').trigger('click')
+    await wrapper.get('input[aria-label="日期"]').setValue('2026-08-14')
+    await wrapper.get('[data-testid="save-entry"]').trigger('submit')
+    await wrapper.get('[data-testid="duplicate-entry-confirm"]').trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.get('[data-testid="duplicate-entry-dialog"]')
+    expect(dialog.get('[role="alert"]').text()).toContain('本地空间不足，未能保存')
+    expect(dialog.get('[data-testid="duplicate-entry-confirm"]').attributes()).not.toHaveProperty('disabled')
+  })
+
+  it('limits duplicate details to three rows and summarizes the remainder', async () => {
+    const repo = repository()
+    vi.mocked(repo.listTransactions).mockResolvedValue(Array.from({ length: 5 }, (_, index) => ({
+      ...existingTransaction, id: `existing-${index}`, occurredLocalTime: `0${index}:00`,
+    })))
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="amount-input"]').setValue('18.80')
+    await wrapper.get('[data-testid="category-food"]').trigger('click')
+    await wrapper.get('[data-testid="entry-details-toggle"]').trigger('click')
+    await wrapper.get('input[aria-label="日期"]').setValue('2026-08-14')
+    await wrapper.get('[data-testid="save-entry"]').trigger('submit')
+    await flushPromises()
+
+    const dialog = wrapper.get('[data-testid="duplicate-entry-dialog"]')
+    expect(dialog.findAll('.duplicate-list article')).toHaveLength(3)
+    expect(dialog.text()).toContain('另有 2 笔相同记录')
   })
 
   it('lets a delete undo notification be dismissed without restoring the transaction', async () => {
