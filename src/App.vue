@@ -34,13 +34,14 @@ const {
 } = storeToRefs(itemStore)
 const categoryManagerOpen = ref(false)
 const settingsOpen = ref(false)
+const statsReturnTransactionId = ref<string | null>(null)
 const duplicateCandidates = ref<Transaction[]>([])
 const duplicateConfirming = ref(false)
 const duplicateCancelButton = ref<HTMLButtonElement | null>(null)
 const duplicateConfirmButton = ref<HTMLButtonElement | null>(null)
 const updateController = new PwaUpdateController()
 const updateState = updateController.state
-const appVersion = import.meta.env.VITE_APP_VERSION || '1.6.0'
+const appVersion = import.meta.env.VITE_APP_VERSION || '1.7.0'
 let dateRefreshTimer: number | null = null
 
 function localToday(): string {
@@ -94,10 +95,53 @@ async function saveDraft(value: EntryDraft): Promise<void> {
       duplicateCancelButton.value?.focus()
       return
     }
-    await store.saveEntry()
+    const returnedToStats = await saveCurrentEntry()
+    if (returnedToStats) await focusStatsHeading()
   } catch {
     // Error is displayed next to the app shell.
   }
+}
+
+async function saveCurrentEntry(): Promise<boolean> {
+  const operationEditingId = store.editingTransactionId
+  const shouldReturnToStats = Boolean(operationEditingId) && statsReturnTransactionId.value === operationEditingId
+  await store.saveEntry()
+  if (!shouldReturnToStats || statsReturnTransactionId.value !== operationEditingId || store.editingTransactionId !== null) return false
+  statsReturnTransactionId.value = null
+  pageIndex.value = 2
+  return true
+}
+
+async function focusStatsHeading(): Promise<void> {
+  await nextTick()
+  document.getElementById('stats-title')?.focus()
+}
+
+function editFromLedger(transaction: Transaction): void {
+  if (saving.value) {
+    store.toast = { message: '当前流水正在保存，请稍候' }
+    return
+  }
+  statsReturnTransactionId.value = null
+  store.beginEdit(transaction)
+}
+
+function duplicateFromLedger(transaction: Transaction): void {
+  if (saving.value) {
+    store.toast = { message: '当前流水正在保存，请稍候' }
+    return
+  }
+  statsReturnTransactionId.value = null
+  store.duplicateToDraft(transaction)
+}
+
+function editFromStats(transaction: Transaction): void {
+  if (saving.value) {
+    store.toast = { message: '当前流水正在保存，请稍候' }
+    return
+  }
+  statsReturnTransactionId.value = transaction.id
+  store.beginEdit(transaction)
 }
 
 function duplicateCategoryLabel(transaction: Transaction): string {
@@ -120,10 +164,11 @@ async function confirmDuplicateSave(): Promise<void> {
   if (duplicateConfirming.value) return
   duplicateConfirming.value = true
   try {
-    await store.saveEntry()
+    const returnedToStats = await saveCurrentEntry()
     duplicateCandidates.value = []
     await nextTick()
-    document.querySelector<HTMLInputElement>('[data-testid="amount-input"]')?.focus()
+    if (returnedToStats) document.getElementById('stats-title')?.focus()
+    else document.querySelector<HTMLInputElement>('[data-testid="amount-input"]')?.focus()
   } catch {
     // Store error remains visible while the draft and confirmation stay intact.
   } finally {
@@ -328,8 +373,8 @@ function applyAvailableUpdate(): void {
             :transactions="transactions"
             :categories="categories"
             :initial-month="today.slice(0, 7)"
-            @edit="store.beginEdit"
-            @duplicate="store.duplicateToDraft"
+            @edit="editFromLedger"
+            @duplicate="duplicateFromLedger"
             @delete="deleteTransaction"
           />
         </template>
@@ -340,6 +385,7 @@ function applyAvailableUpdate(): void {
             :as-of-date="today"
             :month-comparison-mode="monthComparisonMode"
             @update:month-comparison-mode="store.updateMonthComparisonMode"
+            @edit="editFromStats"
           />
         </template>
         <template #items>

@@ -147,6 +147,27 @@ describe('book store', () => {
     expect(repository.addTransaction).not.toHaveBeenCalled()
   })
 
+  it('treats a post-write refresh failure as a saved edit and reconciles the returned row', async () => {
+    const repository = fakeRepository()
+    const updated = { ...saved, note: '已经写入数据库', updatedAt: '2026-08-14T01:00:00.000Z' }
+    vi.mocked(repository.listTransactions)
+      .mockResolvedValueOnce([saved])
+      .mockRejectedValueOnce(new Error('刷新读取失败'))
+    vi.mocked(repository.updateTransaction).mockResolvedValue(updated)
+    setBookRepository(repository)
+    const store = useBookStore()
+    await store.initialize()
+    store.beginEdit(saved)
+    store.updateDraft({ ...store.draft, note: '已经写入数据库' })
+
+    await expect(store.saveEntry()).resolves.toBeUndefined()
+
+    expect(store.editingTransactionId).toBeNull()
+    expect(store.transactions.find((row) => row.id === saved.id)?.note).toBe('已经写入数据库')
+    expect(store.error).toContain('流水已保存')
+    expect(store.error).toContain('刷新')
+  })
+
   it('reorders sibling categories by swapping their stable sort positions', async () => {
     const repository = fakeRepository()
     const second = { ...category, id: 'life', name: '生活', sortOrder: 1 }
