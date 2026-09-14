@@ -99,9 +99,9 @@ function onImport(event: Event): void {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>首页显示最近一次有效记账或编辑时间</li>
-          <li>同一天、同金额、同收支类型的疑似重复账单会在保存前提醒</li>
-          <li>点击大类默认选择首个小类，餐饮可按金额智能选择早餐、晚餐或正餐</li>
+          <li>统计小类明细中的每笔流水都可以直接点击编辑</li>
+          <li>保存会覆盖原流水，不会新增第二笔或改变流水 ID</li>
+          <li>从统计编辑成功后自动返回原来的统计位置</li>
         </ul>
       </details>
     </section>

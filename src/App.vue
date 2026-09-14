@@ -34,13 +34,14 @@ const {
 } = storeToRefs(itemStore)
 const categoryManagerOpen = ref(false)
 const settingsOpen = ref(false)
+const returnToStatsAfterEdit = ref(false)
 const duplicateCandidates = ref<Transaction[]>([])
 const duplicateConfirming = ref(false)
 const duplicateCancelButton = ref<HTMLButtonElement | null>(null)
 const duplicateConfirmButton = ref<HTMLButtonElement | null>(null)
 const updateController = new PwaUpdateController()
 const updateState = updateController.state
-const appVersion = import.meta.env.VITE_APP_VERSION || '1.6.0'
+const appVersion = import.meta.env.VITE_APP_VERSION || '1.7.0'
 let dateRefreshTimer: number | null = null
 
 function localToday(): string {
@@ -94,10 +95,33 @@ async function saveDraft(value: EntryDraft): Promise<void> {
       duplicateCancelButton.value?.focus()
       return
     }
-    await store.saveEntry()
+    await saveCurrentEntry()
   } catch {
     // Error is displayed next to the app shell.
   }
+}
+
+async function saveCurrentEntry(): Promise<void> {
+  const shouldReturnToStats = returnToStatsAfterEdit.value && Boolean(store.editingTransactionId)
+  await store.saveEntry()
+  if (!shouldReturnToStats) return
+  returnToStatsAfterEdit.value = false
+  pageIndex.value = 2
+}
+
+function editFromLedger(transaction: Transaction): void {
+  returnToStatsAfterEdit.value = false
+  store.beginEdit(transaction)
+}
+
+function duplicateFromLedger(transaction: Transaction): void {
+  returnToStatsAfterEdit.value = false
+  store.duplicateToDraft(transaction)
+}
+
+function editFromStats(transaction: Transaction): void {
+  returnToStatsAfterEdit.value = true
+  store.beginEdit(transaction)
 }
 
 function duplicateCategoryLabel(transaction: Transaction): string {
@@ -120,7 +144,7 @@ async function confirmDuplicateSave(): Promise<void> {
   if (duplicateConfirming.value) return
   duplicateConfirming.value = true
   try {
-    await store.saveEntry()
+    await saveCurrentEntry()
     duplicateCandidates.value = []
     await nextTick()
     document.querySelector<HTMLInputElement>('[data-testid="amount-input"]')?.focus()
@@ -328,8 +352,8 @@ function applyAvailableUpdate(): void {
             :transactions="transactions"
             :categories="categories"
             :initial-month="today.slice(0, 7)"
-            @edit="store.beginEdit"
-            @duplicate="store.duplicateToDraft"
+            @edit="editFromLedger"
+            @duplicate="duplicateFromLedger"
             @delete="deleteTransaction"
           />
         </template>
@@ -340,6 +364,7 @@ function applyAvailableUpdate(): void {
             :as-of-date="today"
             :month-comparison-mode="monthComparisonMode"
             @update:month-comparison-mode="store.updateMonthComparisonMode"
+            @edit="editFromStats"
           />
         </template>
         <template #items>

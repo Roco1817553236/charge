@@ -19,6 +19,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'update:monthComparisonMode': [mode: 'to-date' | 'full-month']
+  edit: [transaction: Transaction]
 }>()
 
 const view = ref<'month' | 'year'>('month')
@@ -344,11 +345,14 @@ function monthTitle(value: string): string {
           >收起</button>
         </header>
         <div class="subcategory-transaction-list">
-          <div
+          <button
             v-for="transaction in selectedSubcategoryDetails.transactions"
             :key="transaction.id"
             :data-testid="`expense-subcategory-transaction-${transaction.id}`"
             class="subcategory-transaction"
+            type="button"
+            :aria-label="`编辑 ${transaction.occurredLocalDate} ${selectedSubcategory.name} ${transaction.note || '无备注'} ${formatMinor(transaction.amountMinor)}`"
+            @click="emit('edit', transaction)"
           >
             <time :datetime="`${transaction.occurredLocalDate}T${transaction.occurredLocalTime}`">
               {{ transaction.occurredLocalDate }}
@@ -358,7 +362,8 @@ function monthTitle(value: string): string {
               {{ transaction.note || '无备注' }}
             </span>
             <strong class="expense-value">-{{ formatMinor(transaction.amountMinor) }}</strong>
-          </div>
+            <span class="edit-hint" aria-hidden="true">编辑 ›</span>
+          </button>
         </div>
       </article>
     </template>
@@ -429,14 +434,17 @@ h1 { margin: 0; color: var(--ink); font-size: clamp(28px, 7vw, 38px); letter-spa
 .details-header { gap: 12px; }
 .details-header > button { flex: 0 0 auto; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); color: var(--accent-strong); font-size: 10px; font-weight: 750; }
 .subcategory-transaction-list { display: grid; }
-.subcategory-transaction { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; padding: 11px 2px; border-top: 1px solid var(--line); }
+.subcategory-transaction { display: grid; width: 100%; grid-template-columns: 92px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-width: 0; min-height: 44px; padding: 11px 2px; border: 0; border-top: 1px solid var(--line); outline: none; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.subcategory-transaction:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.subcategory-transaction:focus-visible { border-radius: 10px; box-shadow: inset 0 0 0 2px var(--accent); }
 .subcategory-transaction time { display: grid; gap: 2px; color: var(--ink); font-size: 10px; font-weight: 700; }
 .subcategory-transaction time small { color: var(--muted); font-size: 9px; font-weight: 600; }
 .transaction-note { overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .subcategory-transaction > strong { font-size: 11px; white-space: nowrap; }
+.edit-hint { color: var(--accent); font-size: 9px; font-weight: 750; white-space: nowrap; }
 .chart-empty { display: grid; min-height: 240px; place-content: center; place-items: center; gap: 7px; margin-top: 14px; padding: 28px; border: 1px dashed var(--line); border-radius: 22px; background: var(--surface); color: var(--muted); text-align: center; }
 .chart-empty > span { font-size: 34px; }.chart-empty strong { color: var(--ink); font-size: 13px; }.chart-empty p { margin: 0; font-size: 10px; }
 @media (min-width: 700px) { .stats-page { padding-top: 36px; }.category-layout { grid-template-columns: 160px minmax(0, 1fr); }.donut { width: 145px; height: 145px; }.donut::after { inset: 29px; } }
-@media (max-width: 520px) { .cashflow-summary, .cashflow-changes { grid-template-columns: 1fr; }.cashflow-card, .change-card { padding: 10px 9px; border-radius: 14px; }.cashflow-card span, .change-card span { font-size: 9px; }.cashflow-card strong { font-size: clamp(18px, 5.5vw, 23px); }.cashflow-card small, .change-card small { font-size: 8px; }.category-layout { grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }.donut { width: 92px; height: 92px; }.donut::after { inset: 18px; }.donut strong { max-width: 62px; font-size: 10px; }.breakdown-list button, .breakdown-row { grid-template-columns: 7px minmax(36px, 1fr) auto auto; gap: 4px; padding: 7px 3px; font-size: 9px; }.breakdown-list strong, .breakdown-list small { font-size: 8px; }.subcategory-transaction { grid-template-columns: 78px minmax(0, 1fr) auto; gap: 7px; }.subcategory-transaction time, .transaction-note, .subcategory-transaction > strong { font-size: 9px; } }
+@media (max-width: 520px) { .cashflow-summary, .cashflow-changes { grid-template-columns: 1fr; }.cashflow-card, .change-card { padding: 10px 9px; border-radius: 14px; }.cashflow-card span, .change-card span { font-size: 9px; }.cashflow-card strong { font-size: clamp(18px, 5.5vw, 23px); }.cashflow-card small, .change-card small { font-size: 8px; }.category-layout { grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }.donut { width: 92px; height: 92px; }.donut::after { inset: 18px; }.donut strong { max-width: 62px; font-size: 10px; }.breakdown-list button, .breakdown-row { grid-template-columns: 7px minmax(36px, 1fr) auto auto; gap: 4px; padding: 7px 3px; font-size: 9px; }.breakdown-list strong, .breakdown-list small { font-size: 8px; }.subcategory-transaction { grid-template-columns: 78px minmax(0, 1fr) auto auto; gap: 6px; }.subcategory-transaction time, .transaction-note, .subcategory-transaction > strong, .edit-hint { font-size: 9px; } }
 @media (max-width: 400px) { .cashflow-card strong, .change-card strong { font-size: 20px; } }
 </style>

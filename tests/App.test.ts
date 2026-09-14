@@ -13,10 +13,17 @@ const category: Category = {
   id: 'food', type: 'expense', parentId: null, name: '餐饮', icon: '🍜', color: '#F97316', sortOrder: 0,
   isPinned: true, status: 'active', revision: { counter: 1, deviceId: 'a' }, createdAt: now, updatedAt: now,
 }
+const lunchCategory: Category = {
+  ...category, id: 'lunch', parentId: 'food', name: '正餐', isPinned: false,
+}
 const existingTransaction: Transaction = {
   id: 'existing-tx', type: 'expense', amountMinor: 1880, currency: 'CNY', categoryId: 'food', subcategoryId: null,
   occurredLocalDate: '2026-08-14', occurredLocalTime: '08:10', timeZone: 'Asia/Shanghai', note: '已有早餐',
   createdAt: now, updatedAt: now, revision: { counter: 1, deviceId: 'a' },
+}
+const statsTransaction: Transaction = {
+  ...existingTransaction, id: 'stats-tx', amountMinor: 2880, subcategoryId: 'lunch',
+  occurredLocalDate: '2026-09-10', note: '统计页原记录',
 }
 function repository(): BookRepository {
   return {
@@ -76,6 +83,94 @@ describe('App', () => {
     expect(wrapper.text()).toContain('设置与备份')
     expect(wrapper.text()).toContain('数据仅保存在当前浏览器')
     expect(wrapper.text()).not.toContain('OneDrive')
+  })
+
+  it('edits the same transaction from statistics and returns to the preserved stats page', async () => {
+    const repo = repository()
+    vi.mocked(repo.listCategories).mockResolvedValue([category, lunchCategory])
+    vi.mocked(repo.listTransactions).mockResolvedValue([statsTransaction])
+    vi.mocked(repo.updateTransaction).mockResolvedValue(statsTransaction)
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="nav-stats"]').trigger('click')
+    await wrapper.get('[data-testid="expense-subcategory-lunch"]').trigger('click')
+    await wrapper.get('[data-testid="expense-subcategory-transaction-stats-tx"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="nav-entry"]').attributes('aria-current')).toBe('page')
+    expect((wrapper.get('[data-testid="amount-input"]').element as HTMLInputElement).value).toBe('28.80')
+    expect(wrapper.get('[data-testid="subcategory-lunch"]').classes()).toContain('selected')
+    await wrapper.get('textarea[aria-label="备注"]').setValue('统计页已修正')
+    await wrapper.get('[data-testid="save-entry"]').trigger('submit')
+    await flushPromises()
+
+    expect(repo.updateTransaction).toHaveBeenCalledWith('stats-tx', expect.objectContaining({ note: '统计页已修正' }))
+    expect(repo.addTransaction).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="nav-stats"]').attributes('aria-current')).toBe('page')
+    expect(wrapper.find('[data-testid="expense-subcategory-details"]').exists()).toBe(true)
+  })
+
+  it('stays on the entry page with the original edit identity when a stats edit fails', async () => {
+    const repo = repository()
+    vi.mocked(repo.listCategories).mockResolvedValue([category, lunchCategory])
+    vi.mocked(repo.listTransactions).mockResolvedValue([statsTransaction])
+    vi.mocked(repo.updateTransaction).mockRejectedValue(new Error('本地写入失败'))
+    const pinia = createPinia()
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="nav-stats"]').trigger('click')
+    await wrapper.get('[data-testid="expense-subcategory-lunch"]').trigger('click')
+    await wrapper.get('[data-testid="expense-subcategory-transaction-stats-tx"]').trigger('click')
+    await wrapper.get('[data-testid="save-entry"]').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="nav-entry"]').attributes('aria-current')).toBe('page')
+    expect(useBookStore(pinia).editingTransactionId).toBe('stats-tx')
+    expect(wrapper.text()).toContain('本地写入失败')
+  })
+
+  it('keeps the existing stay-on-entry behavior when editing from the ledger', async () => {
+    const repo = repository()
+    vi.mocked(repo.listCategories).mockResolvedValue([category, lunchCategory])
+    vi.mocked(repo.listTransactions).mockResolvedValue([statsTransaction])
+    vi.mocked(repo.updateTransaction).mockResolvedValue(statsTransaction)
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="nav-ledger"]').trigger('click')
+    await wrapper.get('button[aria-label="操作 统计页原记录"]').trigger('click')
+    await wrapper.get('[data-testid="edit-stats-tx"]').trigger('click')
+    await wrapper.get('[data-testid="save-entry"]').trigger('submit')
+    await flushPromises()
+
+    expect(repo.updateTransaction).toHaveBeenCalledWith('stats-tx', expect.any(Object))
+    expect(wrapper.get('[data-testid="nav-entry"]').attributes('aria-current')).toBe('page')
+  })
+
+  it('returns to statistics after confirming a duplicate found during a stats edit', async () => {
+    const duplicate = { ...statsTransaction, id: 'other-tx', note: '另一笔相同流水' }
+    const repo = repository()
+    vi.mocked(repo.listCategories).mockResolvedValue([category, lunchCategory])
+    vi.mocked(repo.listTransactions).mockResolvedValue([statsTransaction, duplicate])
+    vi.mocked(repo.updateTransaction).mockResolvedValue(statsTransaction)
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="nav-stats"]').trigger('click')
+    await wrapper.get('[data-testid="expense-subcategory-lunch"]').trigger('click')
+    await wrapper.get('[data-testid="expense-subcategory-transaction-stats-tx"]').trigger('click')
+    await wrapper.get('[data-testid="save-entry"]').trigger('submit')
+    expect(wrapper.find('[data-testid="duplicate-entry-dialog"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="duplicate-entry-confirm"]').trigger('click')
+    await flushPromises()
+
+    expect(repo.updateTransaction).toHaveBeenCalledWith('stats-tx', expect.any(Object))
+    expect(wrapper.get('[data-testid="nav-stats"]').attributes('aria-current')).toBe('page')
   })
 
   it('warns about a same-type same-date same-amount entry and lets the user return or save once', async () => {

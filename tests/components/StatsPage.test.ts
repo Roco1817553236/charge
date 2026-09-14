@@ -139,6 +139,20 @@ describe('StatsPage', () => {
     expect(lunch.attributes('aria-pressed')).toBe('false')
   })
 
+  it('emits the original transaction when a detail row is activated for editing', async () => {
+    const wrapper = mount(StatsPage, { props: { transactions, categories, asOfDate: '2026-08-14' } })
+    await wrapper.get('[data-testid="expense-subcategory-lunch"]').trigger('click')
+
+    const row = wrapper.get('[data-testid="expense-subcategory-transaction-food-current"]')
+    expect(row.element.tagName).toBe('BUTTON')
+    expect(row.attributes('aria-label')).toContain('编辑')
+    expect(row.attributes('aria-label')).toContain('2026-08-10')
+
+    await row.trigger('click')
+
+    expect(wrapper.emitted('edit')?.[0]?.[0]).toStrictEqual(transactions[0])
+  })
+
   it('links the expanded details and restores focus to its subcategory control when closed', async () => {
     const host = document.createElement('div')
     document.body.append(host)

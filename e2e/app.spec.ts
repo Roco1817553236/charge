@@ -53,6 +53,7 @@ test('shows latest activity, suggests subcategories, and confirms possible dupli
 })
 
 test('records a transaction and exposes it in the ledger and statistics', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await expect(page.getByRole('heading', { name: '记一笔' })).toBeVisible()
 
@@ -84,6 +85,22 @@ test('records a transaction and exposes it in the ledger and statistics', async 
 
   await subcategory.press('Space')
   await expect(details).toContainText('端到端验收午饭')
+
+  await details.locator('.subcategory-transaction').click()
+  await expect(page.getByTestId('nav-entry')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByLabel('备注')).toHaveValue('端到端验收午饭')
+  await page.getByRole('button', { name: '早餐', exact: true }).click()
+  await page.getByLabel('备注').fill('统计页修正为早餐')
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+
+  await expect(page.getByTestId('nav-stats')).toHaveAttribute('aria-current', 'page')
+  await expect(stats.getByTestId('expense-subcategory-details')).toHaveCount(0)
+  await stats.getByRole('button', { name: /早餐/ }).click()
+  await expect(stats.getByTestId('expense-subcategory-details')).toContainText('统计页修正为早餐')
+
+  await page.getByTestId('nav-ledger').click()
+  await expect(ledger.getByText('统计页修正为早餐')).toHaveCount(1)
+  await expect(ledger.getByText('端到端验收午饭')).toHaveCount(0)
 })
 
 test('persists an unfinished draft across reload and lets the user undo a saved row', async ({ page }) => {
