@@ -173,6 +173,36 @@ describe('App', () => {
     expect(wrapper.get('[data-testid="nav-stats"]').attributes('aria-current')).toBe('page')
   })
 
+  it('does not replace a stats edit with another ledger edit while its save is pending', async () => {
+    let resolveUpdate!: (transaction: Transaction) => void
+    const updatePending = new Promise<Transaction>((resolve) => { resolveUpdate = resolve })
+    const other = { ...statsTransaction, id: 'other-edit', amountMinor: 990, note: '不应覆盖的新编辑' }
+    const repo = repository()
+    vi.mocked(repo.listCategories).mockResolvedValue([category, lunchCategory])
+    vi.mocked(repo.listTransactions).mockResolvedValue([statsTransaction, other])
+    vi.mocked(repo.updateTransaction).mockReturnValue(updatePending)
+    const pinia = createPinia()
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="nav-stats"]').trigger('click')
+    await wrapper.get('[data-testid="expense-subcategory-lunch"]').trigger('click')
+    await wrapper.get('[data-testid="expense-subcategory-transaction-stats-tx"]').trigger('click')
+    await wrapper.get('[data-testid="save-entry"]').trigger('submit')
+    expect(useBookStore(pinia).saving).toBe(true)
+
+    await wrapper.get('[data-testid="nav-ledger"]').trigger('click')
+    await wrapper.get('button[aria-label="操作 不应覆盖的新编辑"]').trigger('click')
+    await wrapper.get('[data-testid="edit-other-edit"]').trigger('click')
+
+    expect(useBookStore(pinia).editingTransactionId).toBe('stats-tx')
+    resolveUpdate(statsTransaction)
+    await flushPromises()
+    expect(repo.updateTransaction).toHaveBeenCalledWith('stats-tx', expect.any(Object))
+    expect(wrapper.get('[data-testid="nav-stats"]').attributes('aria-current')).toBe('page')
+  })
+
   it('warns about a same-type same-date same-amount entry and lets the user return or save once', async () => {
     const repo = repository()
     vi.mocked(repo.listTransactions).mockResolvedValue([existingTransaction])

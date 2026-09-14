@@ -147,6 +147,8 @@ describe('StatsPage', () => {
     expect(row.element.tagName).toBe('BUTTON')
     expect(row.attributes('aria-label')).toContain('编辑')
     expect(row.attributes('aria-label')).toContain('2026-08-10')
+    expect(row.attributes('aria-label')).toContain('餐饮')
+    expect(row.attributes('aria-label')).toContain('正餐')
 
     await row.trigger('click')
 

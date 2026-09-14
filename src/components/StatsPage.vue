@@ -191,7 +191,7 @@ function monthTitle(value: string): string {
     <header class="page-header">
       <div>
         <p class="eyebrow">INSIGHTS</p>
-        <h1 id="stats-title">收支统计</h1>
+        <h1 id="stats-title" tabindex="-1">收支统计</h1>
       </div>
       <div class="view-switch">
         <button data-testid="stats-month" type="button" :class="{ active: view === 'month' }" @click="setView('month')">月度</button>
@@ -351,7 +351,7 @@ function monthTitle(value: string): string {
             :data-testid="`expense-subcategory-transaction-${transaction.id}`"
             class="subcategory-transaction"
             type="button"
-            :aria-label="`编辑 ${transaction.occurredLocalDate} ${selectedSubcategory.name} ${transaction.note || '无备注'} ${formatMinor(transaction.amountMinor)}`"
+            :aria-label="`编辑 ${transaction.occurredLocalDate} ${selectedCategory?.name ?? '未知大类'} ${selectedSubcategory.name} ${transaction.note || '无备注'} ${formatMinor(transaction.amountMinor)}`"
             @click="emit('edit', transaction)"
           >
             <time :datetime="`${transaction.occurredLocalDate}T${transaction.occurredLocalTime}`">

@@ -34,7 +34,7 @@ const {
 } = storeToRefs(itemStore)
 const categoryManagerOpen = ref(false)
 const settingsOpen = ref(false)
-const returnToStatsAfterEdit = ref(false)
+const statsReturnTransactionId = ref<string | null>(null)
 const duplicateCandidates = ref<Transaction[]>([])
 const duplicateConfirming = ref(false)
 const duplicateCancelButton = ref<HTMLButtonElement | null>(null)
@@ -95,32 +95,52 @@ async function saveDraft(value: EntryDraft): Promise<void> {
       duplicateCancelButton.value?.focus()
       return
     }
-    await saveCurrentEntry()
+    const returnedToStats = await saveCurrentEntry()
+    if (returnedToStats) await focusStatsHeading()
   } catch {
     // Error is displayed next to the app shell.
   }
 }
 
-async function saveCurrentEntry(): Promise<void> {
-  const shouldReturnToStats = returnToStatsAfterEdit.value && Boolean(store.editingTransactionId)
+async function saveCurrentEntry(): Promise<boolean> {
+  const operationEditingId = store.editingTransactionId
+  const shouldReturnToStats = Boolean(operationEditingId) && statsReturnTransactionId.value === operationEditingId
   await store.saveEntry()
-  if (!shouldReturnToStats) return
-  returnToStatsAfterEdit.value = false
+  if (!shouldReturnToStats || statsReturnTransactionId.value !== operationEditingId || store.editingTransactionId !== null) return false
+  statsReturnTransactionId.value = null
   pageIndex.value = 2
+  return true
+}
+
+async function focusStatsHeading(): Promise<void> {
+  await nextTick()
+  document.getElementById('stats-title')?.focus()
 }
 
 function editFromLedger(transaction: Transaction): void {
-  returnToStatsAfterEdit.value = false
+  if (saving.value) {
+    store.toast = { message: '当前流水正在保存，请稍候' }
+    return
+  }
+  statsReturnTransactionId.value = null
   store.beginEdit(transaction)
 }
 
 function duplicateFromLedger(transaction: Transaction): void {
-  returnToStatsAfterEdit.value = false
+  if (saving.value) {
+    store.toast = { message: '当前流水正在保存，请稍候' }
+    return
+  }
+  statsReturnTransactionId.value = null
   store.duplicateToDraft(transaction)
 }
 
 function editFromStats(transaction: Transaction): void {
-  returnToStatsAfterEdit.value = true
+  if (saving.value) {
+    store.toast = { message: '当前流水正在保存，请稍候' }
+    return
+  }
+  statsReturnTransactionId.value = transaction.id
   store.beginEdit(transaction)
 }
 
@@ -144,10 +164,11 @@ async function confirmDuplicateSave(): Promise<void> {
   if (duplicateConfirming.value) return
   duplicateConfirming.value = true
   try {
-    await saveCurrentEntry()
+    const returnedToStats = await saveCurrentEntry()
     duplicateCandidates.value = []
     await nextTick()
-    document.querySelector<HTMLInputElement>('[data-testid="amount-input"]')?.focus()
+    if (returnedToStats) document.getElementById('stats-title')?.focus()
+    else document.querySelector<HTMLInputElement>('[data-testid="amount-input"]')?.focus()
   } catch {
     // Store error remains visible while the draft and confirmation stay intact.
   } finally {

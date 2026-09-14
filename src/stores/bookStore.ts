@@ -94,6 +94,20 @@ function restoredEntryState(): { draft: EntryDraft; editingTransactionId: string
   }
 }
 
+function sameEntryDraft(left: EntryDraft, right: EntryDraft): boolean {
+  return left.type === right.type && left.amount === right.amount && left.categoryId === right.categoryId &&
+    left.subcategoryId === right.subcategoryId && left.date === right.date && left.time === right.time &&
+    left.note === right.note
+}
+
+function sortTransactions(transactions: Transaction[]): Transaction[] {
+  return transactions.sort((left, right) =>
+    `${right.occurredLocalDate}T${right.occurredLocalTime}`.localeCompare(
+      `${left.occurredLocalDate}T${left.occurredLocalTime}`,
+    ),
+  )
+}
+
 export const useBookStore = defineStore('book', {
   state: () => {
     const entry = restoredEntryState()
@@ -204,26 +218,39 @@ export const useBookStore = defineStore('book', {
 
     async saveEntry(): Promise<void> {
       if (!this.draft.categoryId) throw new Error('请选择分类')
+      if (this.saving) throw new Error('正在保存，请稍候')
+      const startingDraft = { ...this.draft }
+      const startingEditingId = this.editingTransactionId
       this.saving = true
       this.error = null
       try {
         const input: AddTransactionInput = {
-          type: this.draft.type,
-          amountMinor: parseAmountToMinor(this.draft.amount),
-          categoryId: this.draft.categoryId,
-          subcategoryId: this.draft.subcategoryId,
-          occurredLocalDate: this.draft.date,
-          occurredLocalTime: this.draft.time,
-          note: this.draft.note,
+          type: startingDraft.type,
+          amountMinor: parseAmountToMinor(startingDraft.amount),
+          categoryId: startingDraft.categoryId!,
+          subcategoryId: startingDraft.subcategoryId,
+          occurredLocalDate: startingDraft.date,
+          occurredLocalTime: startingDraft.time,
+          note: startingDraft.note,
         }
-        let savedTransaction: Transaction | null = null
-        if (this.editingTransactionId) await repository.updateTransaction(this.editingTransactionId, input)
-        else savedTransaction = await repository.addTransaction(input)
-        const wasEditing = Boolean(this.editingTransactionId)
-        this.lastSavedId = savedTransaction?.id ?? null
-        this.editingTransactionId = null
-        this.updateDraft(emptyDraft(this.draft.type))
-        await this.refresh()
+        const savedTransaction = startingEditingId
+          ? await repository.updateTransaction(startingEditingId, input)
+          : await repository.addTransaction(input)
+        const wasEditing = Boolean(startingEditingId)
+        this.lastSavedId = wasEditing ? null : savedTransaction.id
+        this.transactions = sortTransactions([
+          ...this.transactions.filter((transaction) => transaction.id !== savedTransaction.id && !transaction.deletedAt),
+          savedTransaction,
+        ])
+        if (this.editingTransactionId === startingEditingId && sameEntryDraft(this.draft, startingDraft)) {
+          this.editingTransactionId = null
+          this.updateDraft(emptyDraft(startingDraft.type))
+        }
+        try {
+          await this.refresh()
+        } catch (refreshError) {
+          this.error = `流水已保存，但列表刷新失败：${userMessage(refreshError, '请稍后重试')}`
+        }
         this.toast = wasEditing
           ? { message: '流水已更新' }
           : { message: '本机已保存，可继续记账', action: 'undo-save' }

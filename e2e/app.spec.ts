@@ -86,7 +86,9 @@ test('records a transaction and exposes it in the ledger and statistics', async 
   await subcategory.press('Space')
   await expect(details).toContainText('端到端验收午饭')
 
-  await details.locator('.subcategory-transaction').click()
+  const editableStatsRow = details.locator('.subcategory-transaction')
+  await editableStatsRow.focus()
+  await editableStatsRow.press('Enter')
   await expect(page.getByTestId('nav-entry')).toHaveAttribute('aria-current', 'page')
   await expect(page.getByLabel('备注')).toHaveValue('端到端验收午饭')
   await page.getByRole('button', { name: '早餐', exact: true }).click()
@@ -94,6 +96,7 @@ test('records a transaction and exposes it in the ledger and statistics', async 
   await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
 
   await expect(page.getByTestId('nav-stats')).toHaveAttribute('aria-current', 'page')
+  await expect(stats.getByRole('heading', { name: '收支统计' })).toBeFocused()
   await expect(stats.getByTestId('expense-subcategory-details')).toHaveCount(0)
   await stats.getByRole('button', { name: /早餐/ }).click()
   await expect(stats.getByTestId('expense-subcategory-details')).toContainText('统计页修正为早餐')
