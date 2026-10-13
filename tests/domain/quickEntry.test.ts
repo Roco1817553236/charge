@@ -4,6 +4,7 @@ import {
   findDuplicateTransactions,
   findLatestBookkeepingTimestamp,
   formatLastBookkeepingTime,
+  nextDraftDateAfterAdd,
   suggestSubcategory,
 } from '../../src/domain/quickEntry'
 
@@ -98,5 +99,46 @@ describe('quick entry domain rules', () => {
     })
 
     expect(suggestSubcategory(reordered, reordered[0]!, undefined)).toBe('dinner')
+  })
+
+  it('keeps the saved date below three active rows and advances at three rows', () => {
+    const rows = [
+      { ...baseTransaction, id: 'first', occurredLocalDate: '2026-10-01' },
+      { ...baseTransaction, id: 'second', type: 'income' as const, occurredLocalDate: '2026-10-01' },
+    ]
+
+    expect(nextDraftDateAfterAdd(rows, '2026-10-01')).toBe('2026-10-01')
+    expect(nextDraftDateAfterAdd([
+      ...rows,
+      { ...baseTransaction, id: 'third', occurredLocalDate: '2026-10-01' },
+    ], '2026-10-01')).toBe('2026-10-02')
+  })
+
+  it('does not count deleted rows toward automatic date progression', () => {
+    const rows = [
+      { ...baseTransaction, id: 'first', occurredLocalDate: '2026-10-01' },
+      { ...baseTransaction, id: 'second', occurredLocalDate: '2026-10-01' },
+      { ...baseTransaction, id: 'deleted', occurredLocalDate: '2026-10-01', deletedAt: '2026-10-02T00:00:00.000Z' },
+    ]
+
+    expect(nextDraftDateAfterAdd(rows, '2026-10-01')).toBe('2026-10-01')
+  })
+
+  it.each([
+    ['2026-01-31', '2026-02-01'],
+    ['2026-02-28', '2026-03-01'],
+    ['2028-02-28', '2028-02-29'],
+    ['2028-02-29', '2028-03-01'],
+    ['2026-12-31', '2027-01-01'],
+    ['9999-12-31', '9999-12-31'],
+    ['2026-02-30', '2026-02-30'],
+    ['2026-13-01', '2026-13-01'],
+    ['0000-01-01', '0000-01-01'],
+    ['invalid', 'invalid'],
+  ])('advances %s by one local calendar day after three rows', (date, expected) => {
+    const rows = Array.from({ length: 3 }, (_, index) => ({
+      ...baseTransaction, id: `row-${index}`, occurredLocalDate: date,
+    }))
+    expect(nextDraftDateAfterAdd(rows, date)).toBe(expected)
   })
 })

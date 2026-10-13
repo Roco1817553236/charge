@@ -84,6 +84,106 @@ describe('book store', () => {
     expect(repository.softDeleteTransaction).toHaveBeenCalledWith(saved.id)
   })
 
+  it('keeps a manually selected date for two additions and advances after the third and later additions', async () => {
+    const repository = fakeRepository()
+    let rows: Transaction[] = []
+    let id = 0
+    vi.mocked(repository.listTransactions).mockImplementation(async () => rows)
+    vi.mocked(repository.addTransaction).mockImplementation(async (input) => {
+      const transaction: Transaction = {
+        ...saved, ...input, id: `added-${++id}`, createdAt: now, updatedAt: now,
+      }
+      rows = [...rows, transaction]
+      return transaction
+    })
+    setBookRepository(repository)
+    const store = useBookStore()
+    await store.initialize()
+
+    const addOnOctoberFirst = async () => {
+      store.updateDraft({
+        ...store.draft, amount: '1.00', categoryId: 'food', subcategoryId: null,
+        date: '2026-10-01', time: '08:00', note: '',
+      })
+      await store.saveEntry()
+    }
+
+    await addOnOctoberFirst()
+    expect(store.draft.date).toBe('2026-10-01')
+    await addOnOctoberFirst()
+    expect(store.draft.date).toBe('2026-10-01')
+    await addOnOctoberFirst()
+    expect(store.draft.date).toBe('2026-10-02')
+
+    await addOnOctoberFirst()
+    expect(store.draft.date).toBe('2026-10-02')
+    expect(rows.filter((row) => row.occurredLocalDate === '2026-10-01')).toHaveLength(4)
+  })
+
+  it('uses the reconciled saved row to advance the date even when post-write refresh fails', async () => {
+    const existing = [
+      { ...saved, id: 'existing-1', occurredLocalDate: '2026-10-01' },
+      { ...saved, id: 'existing-2', occurredLocalDate: '2026-10-01' },
+    ]
+    const repository = fakeRepository()
+    vi.mocked(repository.listTransactions)
+      .mockResolvedValueOnce(existing)
+      .mockRejectedValueOnce(new Error('刷新失败'))
+    vi.mocked(repository.addTransaction).mockImplementation(async (input) => ({
+      ...saved, ...input, id: 'third-row', createdAt: now, updatedAt: now,
+    }))
+    setBookRepository(repository)
+    const store = useBookStore()
+    await store.initialize()
+    store.updateDraft({
+      ...store.draft, amount: '1.00', categoryId: 'food', subcategoryId: null,
+      date: '2026-10-01', time: '08:00', note: '',
+    })
+
+    await store.saveEntry()
+
+    expect(store.draft.date).toBe('2026-10-02')
+    expect(store.error).toContain('流水已保存')
+  })
+
+  it('bases progression on the date returned by the repository after normalization', async () => {
+    const existing = [
+      { ...saved, id: 'existing-1', occurredLocalDate: '2026-10-02' },
+      { ...saved, id: 'existing-2', occurredLocalDate: '2026-10-02' },
+    ]
+    const repository = fakeRepository()
+    vi.mocked(repository.listTransactions).mockResolvedValue(existing)
+    vi.mocked(repository.addTransaction).mockImplementation(async (input) => ({
+      ...saved, ...input, id: 'normalized-row', occurredLocalDate: '2026-10-02', createdAt: now, updatedAt: now,
+    }))
+    setBookRepository(repository)
+    const store = useBookStore()
+    await store.initialize()
+    store.updateDraft({
+      ...store.draft, amount: '1.00', categoryId: 'food', subcategoryId: null,
+      date: '2026-10-01', time: '08:00', note: '',
+    })
+
+    await store.saveEntry()
+
+    expect(store.draft.date).toBe('2026-10-03')
+  })
+
+  it('keeps the selected date when a new transaction fails to save', async () => {
+    const repository = fakeRepository()
+    vi.mocked(repository.addTransaction).mockRejectedValue(new Error('写入失败'))
+    setBookRepository(repository)
+    const store = useBookStore()
+    await store.initialize()
+    store.updateDraft({
+      ...store.draft, amount: '1.00', categoryId: 'food', subcategoryId: null,
+      date: '2026-10-01', time: '08:00', note: '',
+    })
+
+    await expect(store.saveEntry()).rejects.toThrow('写入失败')
+    expect(store.draft.date).toBe('2026-10-01')
+  })
+
   it('derives the latest bookkeeping timestamp from active transactions', async () => {
     const repository = fakeRepository()
     vi.mocked(repository.listTransactions).mockResolvedValue([

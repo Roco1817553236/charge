@@ -20,7 +20,7 @@ const emit = defineEmits<{
 }>()
 
 const form = reactive<EntryDraft>({ ...props.draft })
-const detailsOpen = ref(Boolean(props.draft.note.trim()))
+const detailsOpen = ref(true)
 const moreOpen = ref(false)
 const automaticSubcategory = ref(false)
 
@@ -29,7 +29,7 @@ watch(() => props.draft, (draft) => {
     .some((key) => draft[key] !== form[key])
   Object.assign(form, draft)
   if (changedExternally) automaticSubcategory.value = false
-  if (draft.note.trim()) detailsOpen.value = true
+  if (changedExternally && draft.note.trim()) detailsOpen.value = true
 }, { deep: true })
 
 const latestBookkeepingLabel = computed(() => {
