@@ -131,6 +131,9 @@ describe('quick entry domain rules', () => {
     ['2028-02-29', '2028-03-01'],
     ['2026-12-31', '2027-01-01'],
     ['9999-12-31', '9999-12-31'],
+    ['2026-02-30', '2026-02-30'],
+    ['2026-13-01', '2026-13-01'],
+    ['0000-01-01', '0000-01-01'],
     ['invalid', 'invalid'],
   ])('advances %s by one local calendar day after three rows', (date, expected) => {
     const rows = Array.from({ length: 3 }, (_, index) => ({

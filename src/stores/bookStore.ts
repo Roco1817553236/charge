@@ -244,7 +244,7 @@ export const useBookStore = defineStore('book', {
         ])
         const nextDraftDate = wasEditing
           ? undefined
-          : nextDraftDateAfterAdd(this.transactions, startingDraft.date)
+          : nextDraftDateAfterAdd(this.transactions, savedTransaction.occurredLocalDate)
         if (this.editingTransactionId === startingEditingId && sameEntryDraft(this.draft, startingDraft)) {
           this.editingTransactionId = null
           this.updateDraft(emptyDraft(startingDraft.type, nextDraftDate))

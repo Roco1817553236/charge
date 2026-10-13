@@ -146,6 +146,29 @@ describe('book store', () => {
     expect(store.error).toContain('流水已保存')
   })
 
+  it('bases progression on the date returned by the repository after normalization', async () => {
+    const existing = [
+      { ...saved, id: 'existing-1', occurredLocalDate: '2026-10-02' },
+      { ...saved, id: 'existing-2', occurredLocalDate: '2026-10-02' },
+    ]
+    const repository = fakeRepository()
+    vi.mocked(repository.listTransactions).mockResolvedValue(existing)
+    vi.mocked(repository.addTransaction).mockImplementation(async (input) => ({
+      ...saved, ...input, id: 'normalized-row', occurredLocalDate: '2026-10-02', createdAt: now, updatedAt: now,
+    }))
+    setBookRepository(repository)
+    const store = useBookStore()
+    await store.initialize()
+    store.updateDraft({
+      ...store.draft, amount: '1.00', categoryId: 'food', subcategoryId: null,
+      date: '2026-10-01', time: '08:00', note: '',
+    })
+
+    await store.saveEntry()
+
+    expect(store.draft.date).toBe('2026-10-03')
+  })
+
   it('keeps the selected date when a new transaction fails to save', async () => {
     const repository = fakeRepository()
     vi.mocked(repository.addTransaction).mockRejectedValue(new Error('写入失败'))

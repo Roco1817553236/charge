@@ -29,7 +29,7 @@ watch(() => props.draft, (draft) => {
     .some((key) => draft[key] !== form[key])
   Object.assign(form, draft)
   if (changedExternally) automaticSubcategory.value = false
-  if (draft.note.trim()) detailsOpen.value = true
+  if (changedExternally && draft.note.trim()) detailsOpen.value = true
 }, { deep: true })
 
 const latestBookkeepingLabel = computed(() => {

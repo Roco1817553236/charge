@@ -41,6 +41,21 @@ describe('QuickEntryPage', () => {
     expect(wrapper.find('input[aria-label="日期"]').exists()).toBe(false)
   })
 
+  it('respects a manual collapse while locally publishing a note-bearing draft', async () => {
+    const wrapper = mount(QuickEntryPage, { props: { categories, draft } })
+    await wrapper.get('textarea[aria-label="备注"]').setValue('保留这条备注')
+    const noteDraft = wrapper.emitted('update:draft')?.at(-1)?.[0] as EntryDraft
+    await wrapper.setProps({ draft: noteDraft })
+    await wrapper.get('[data-testid="entry-details-toggle"]').trigger('click')
+
+    await wrapper.get('[data-testid="amount-input"]').setValue('12.00')
+    const amountDraft = wrapper.emitted('update:draft')?.at(-1)?.[0] as EntryDraft
+    await wrapper.setProps({ draft: amountDraft })
+
+    expect(wrapper.get('[data-testid="entry-details-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('textarea[aria-label="备注"]').exists()).toBe(false)
+  })
+
   it('completes the amount-category-subcategory fast path and emits a save draft', async () => {
     const wrapper = mount(QuickEntryPage, { props: { categories, draft } })
 
