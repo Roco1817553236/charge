@@ -9,6 +9,7 @@ import { setBookRepository, useBookStore, type BookRepository } from '../src/sto
 import { setItemRepository, type ItemRepository } from '../src/stores/itemStore'
 
 const now = '2026-08-14T00:00:00.000Z'
+const currentMonthDate = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`
 const category: Category = {
   id: 'food', type: 'expense', parentId: null, name: '餐饮', icon: '🍜', color: '#F97316', sortOrder: 0,
   isPinned: true, status: 'active', revision: { counter: 1, deviceId: 'a' }, createdAt: now, updatedAt: now,
@@ -23,7 +24,7 @@ const existingTransaction: Transaction = {
 }
 const statsTransaction: Transaction = {
   ...existingTransaction, id: 'stats-tx', amountMinor: 2880, subcategoryId: 'lunch',
-  occurredLocalDate: '2026-09-10', note: '统计页原记录',
+  occurredLocalDate: currentMonthDate, note: '统计页原记录',
 }
 function repository(): BookRepository {
   return {
@@ -212,7 +213,6 @@ describe('App', () => {
 
     await wrapper.get('[data-testid="amount-input"]').setValue('18.80')
     await wrapper.get('[data-testid="category-food"]').trigger('click')
-    await wrapper.get('[data-testid="entry-details-toggle"]').trigger('click')
     await wrapper.get('input[aria-label="日期"]').setValue('2026-08-14')
     await wrapper.get('[data-testid="save-entry"]').trigger('submit')
     await flushPromises()
@@ -248,7 +248,6 @@ describe('App', () => {
 
     await wrapper.get('[data-testid="amount-input"]').setValue('18.80')
     await wrapper.get('[data-testid="category-food"]').trigger('click')
-    await wrapper.get('[data-testid="entry-details-toggle"]').trigger('click')
     await wrapper.get('input[aria-label="日期"]').setValue('2026-08-14')
     await wrapper.get('[data-testid="save-entry"]').trigger('submit')
     await wrapper.get('[data-testid="duplicate-entry-confirm"]').trigger('click')
@@ -270,7 +269,6 @@ describe('App', () => {
 
     await wrapper.get('[data-testid="amount-input"]').setValue('18.80')
     await wrapper.get('[data-testid="category-food"]').trigger('click')
-    await wrapper.get('[data-testid="entry-details-toggle"]').trigger('click')
     await wrapper.get('input[aria-label="日期"]').setValue('2026-08-14')
     await wrapper.get('[data-testid="save-entry"]').trigger('submit')
     await flushPromises()

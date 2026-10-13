@@ -20,7 +20,7 @@ const emit = defineEmits<{
 }>()
 
 const form = reactive<EntryDraft>({ ...props.draft })
-const detailsOpen = ref(Boolean(props.draft.note.trim()))
+const detailsOpen = ref(true)
 const moreOpen = ref(false)
 const automaticSubcategory = ref(false)
 

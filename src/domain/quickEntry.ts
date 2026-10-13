@@ -60,6 +60,31 @@ export function findDuplicateTransactions(
     )
 }
 
+function nextLocalCalendarDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return value
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) return value
+
+  const date = new Date(0)
+  date.setUTCHours(0, 0, 0, 0)
+  date.setUTCFullYear(year, month - 1, day)
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return value
+  date.setUTCDate(date.getUTCDate() + 1)
+  const nextYear = date.getUTCFullYear()
+  if (nextYear > 9999) return value
+  return `${String(nextYear).padStart(4, '0')}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+}
+
+export function nextDraftDateAfterAdd(transactions: Transaction[], savedDate: string): string {
+  const activeCount = transactions.filter((transaction) =>
+    !transaction.deletedAt && transaction.occurredLocalDate === savedDate,
+  ).length
+  return activeCount >= 3 ? nextLocalCalendarDate(savedDate) : savedDate
+}
+
 export function suggestSubcategory(
   categories: Category[],
   root: Category,

@@ -99,9 +99,9 @@ function onImport(event: Event): void {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>统计小类明细中的每笔流水都可以直接点击编辑</li>
-          <li>保存会覆盖原流水，不会新增第二笔或改变流水 ID</li>
-          <li>从统计编辑成功后自动返回原来的统计位置</li>
+          <li>日期、时间和备注进入记账页后默认展开</li>
+          <li>同一日期新增到第 3 笔后，下一张草稿自动进入次日</li>
+          <li>手动返回已有多笔的旧日期，新增后仍按账本实际数量判断</li>
         </ul>
       </details>
     </section>

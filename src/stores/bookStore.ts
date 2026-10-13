@@ -9,7 +9,7 @@ import type {
   TransactionType,
 } from '../domain/models'
 import { parseAmountToMinor } from '../domain/money'
-import { findDuplicateTransactions, findLatestBookkeepingTimestamp } from '../domain/quickEntry'
+import { findDuplicateTransactions, findLatestBookkeepingTimestamp, nextDraftDateAfterAdd } from '../domain/quickEntry'
 
 export interface EntryDraft {
   type: TransactionType
@@ -68,9 +68,9 @@ function localDateTime(date = new Date()): { date: string; time: string } {
   return { date: `${value('year')}-${value('month')}-${value('day')}`, time: `${value('hour')}:${value('minute')}` }
 }
 
-function emptyDraft(type: TransactionType = 'expense'): EntryDraft {
+function emptyDraft(type: TransactionType = 'expense', date?: string): EntryDraft {
   const now = localDateTime()
-  return { type, amount: '', categoryId: null, subcategoryId: null, date: now.date, time: now.time, note: '' }
+  return { type, amount: '', categoryId: null, subcategoryId: null, date: date ?? now.date, time: now.time, note: '' }
 }
 
 function restoredEntryState(): { draft: EntryDraft; editingTransactionId: string | null } {
@@ -242,9 +242,12 @@ export const useBookStore = defineStore('book', {
           ...this.transactions.filter((transaction) => transaction.id !== savedTransaction.id && !transaction.deletedAt),
           savedTransaction,
         ])
+        const nextDraftDate = wasEditing
+          ? undefined
+          : nextDraftDateAfterAdd(this.transactions, startingDraft.date)
         if (this.editingTransactionId === startingEditingId && sameEntryDraft(this.draft, startingDraft)) {
           this.editingTransactionId = null
-          this.updateDraft(emptyDraft(startingDraft.type))
+          this.updateDraft(emptyDraft(startingDraft.type, nextDraftDate))
         }
         try {
           await this.refresh()

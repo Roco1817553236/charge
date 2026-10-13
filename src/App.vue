@@ -41,7 +41,7 @@ const duplicateCancelButton = ref<HTMLButtonElement | null>(null)
 const duplicateConfirmButton = ref<HTMLButtonElement | null>(null)
 const updateController = new PwaUpdateController()
 const updateState = updateController.state
-const appVersion = import.meta.env.VITE_APP_VERSION || '1.7.0'
+const appVersion = import.meta.env.VITE_APP_VERSION || '1.8.0'
 let dateRefreshTimer: number | null = null
 
 function localToday(): string {

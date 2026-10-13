@@ -1,5 +1,32 @@
 import { expect, test } from '@playwright/test'
 
+test('keeps a chosen date for two additions and advances after the third or later row', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 })
+  await page.goto('/')
+  const date = page.getByLabel('日期')
+  await expect(date).toBeVisible()
+  await date.fill('2026-10-01')
+
+  const addExpense = async (amount: string) => {
+    await page.getByTestId('amount-input').fill(amount)
+    await page.getByRole('button', { name: /餐饮/ }).click()
+    await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+    await expect(page.getByText('本机已保存，可继续记账')).toBeVisible()
+    await page.getByRole('button', { name: '关闭提示' }).click()
+  }
+
+  await addExpense('1.00')
+  await expect(date).toHaveValue('2026-10-01')
+  await addExpense('2.00')
+  await expect(date).toHaveValue('2026-10-01')
+  await addExpense('3.00')
+  await expect(date).toHaveValue('2026-10-02')
+
+  await date.fill('2026-10-01')
+  await addExpense('4.00')
+  await expect(date).toHaveValue('2026-10-02')
+})
+
 test('shows latest activity, suggests subcategories, and confirms possible duplicates', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 640 })
   await page.goto('/')
@@ -59,7 +86,6 @@ test('records a transaction and exposes it in the ledger and statistics', async 
 
   await page.getByTestId('amount-input').fill('18.80')
   await page.getByRole('button', { name: /餐饮/ }).click()
-  await page.getByTestId('entry-details-toggle').click()
   await page.getByLabel('备注').fill('端到端验收午饭')
   await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
   await expect(page.getByText('本机已保存，可继续记账')).toBeVisible()
@@ -109,7 +135,6 @@ test('records a transaction and exposes it in the ledger and statistics', async 
 test('persists an unfinished draft across reload and lets the user undo a saved row', async ({ page }) => {
   await page.goto('/')
   await page.getByTestId('amount-input').fill('9.90')
-  await page.getByTestId('entry-details-toggle').click()
   await page.getByLabel('备注').fill('刷新后仍保留')
   await page.reload()
   await expect(page.getByTestId('amount-input')).toHaveValue('9.90')
@@ -201,7 +226,6 @@ test('keeps edit identity across reload and overwrites the original row', async 
   await page.goto('/')
   await page.getByTestId('amount-input').fill('28.80')
   await page.getByRole('button', { name: /餐饮/ }).click()
-  await page.getByTestId('entry-details-toggle').click()
   await page.getByLabel('备注').fill('编辑前流水')
   await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
 

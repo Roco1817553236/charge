@@ -29,6 +29,18 @@ describe('QuickEntryPage', () => {
     expect(wrapper.find('[aria-label="二级分类"]').exists()).toBe(false)
   })
 
+  it('opens date, time and note fields by default while keeping the collapse control', async () => {
+    const wrapper = mount(QuickEntryPage, { props: { categories, draft } })
+
+    expect(wrapper.get('[data-testid="entry-details-toggle"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('input[aria-label="日期"]').exists()).toBe(true)
+    expect(wrapper.find('input[aria-label="时间"]').exists()).toBe(true)
+    expect(wrapper.find('textarea[aria-label="备注"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="entry-details-toggle"]').trigger('click')
+    expect(wrapper.find('input[aria-label="日期"]').exists()).toBe(false)
+  })
+
   it('completes the amount-category-subcategory fast path and emits a save draft', async () => {
     const wrapper = mount(QuickEntryPage, { props: { categories, draft } })
 
@@ -103,7 +115,6 @@ describe('QuickEntryPage', () => {
     await wrapper.get('[data-testid="type-income"]').trigger('click')
     expect(wrapper.get('[data-testid="save-entry"]').classes()).toContain('income-mode')
     expect(wrapper.find('[data-testid="category-salary"]').exists()).toBe(true)
-    await wrapper.get('[data-testid="entry-details-toggle"]').trigger('click')
     expect(wrapper.find('input[aria-label="日期"]').exists()).toBe(true)
     expect(wrapper.find('textarea[aria-label="备注"]').exists()).toBe(true)
   })
