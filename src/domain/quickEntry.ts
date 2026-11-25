@@ -77,18 +77,18 @@ export function findDuplicateTransactions(
 function resolveMealSlot(
   categories: Category[],
   type: TransactionType,
-  categoryId: string,
+  _categoryId: string,
   subcategoryId: string | null,
 ): MealSlot | null {
   if (type !== 'expense' || !subcategoryId) return null
-  const root = categories.find((category) =>
-    !category.deletedAt && category.id === categoryId && category.parentId === null && category.type === 'expense',
-  )
-  if (root?.name !== '餐饮') return null
   const child = categories.find((category) =>
-    !category.deletedAt && category.id === subcategoryId && category.parentId === root.id && category.type === 'expense',
+    !category.deletedAt && category.id === subcategoryId && category.parentId !== null && category.type === 'expense',
   )
   if (!child) return null
+  const root = categories.find((category) =>
+    !category.deletedAt && category.id === child.parentId && category.parentId === null && category.type === 'expense',
+  )
+  if (root?.name !== '餐饮') return null
   if (child.name === '早餐') return '早餐'
   if (child.name === '晚餐') return '晚餐'
   if (child.name === '正餐' || child.name === '午餐' || child.name === '中餐') return '正餐'
@@ -119,11 +119,12 @@ export function previewDuplicateTransactions(
     : []
   const merged = new Map<string, Transaction>()
   for (const transaction of [...amountDuplicates, ...mealDuplicates]) merged.set(transaction.id, transaction)
-  const mergedTransactions = [...merged.values()].sort((left, right) =>
-    `${right.occurredLocalDate}T${right.occurredLocalTime}`.localeCompare(
+  const mergedTransactions = [...merged.values()].sort((left, right) => {
+    const newestFirst = `${right.occurredLocalDate}T${right.occurredLocalTime}`.localeCompare(
       `${left.occurredLocalDate}T${left.occurredLocalTime}`,
-    ),
-  )
+    )
+    return newestFirst || left.id.localeCompare(right.id)
+  })
   return {
     transactions: mergedTransactions,
     amountDuplicateCount: amountDuplicates.length,

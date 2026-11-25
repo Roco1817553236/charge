@@ -100,6 +100,54 @@ describe('quick entry domain rules', () => {
     expect(preview.mealDuplicateCount).toBe(1)
   })
 
+  it('matches dinner duplicates and archived meal categories', () => {
+    const archivedDinner = categories.map((category) =>
+      category.id === 'dinner' ? { ...category, status: 'archived' as const } : category,
+    )
+    const dinnerRow = { ...baseTransaction, id: 'dinner-row', subcategoryId: 'dinner' }
+    const preview = previewDuplicateTransactions([dinnerRow], archivedDinner, {
+      type: 'expense', amountMinor: 2600, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'dinner',
+    })
+
+    expect(preview.mealSlot).toBe('晚餐')
+    expect(preview.transactions.map((row) => row.id)).toEqual(['dinner-row'])
+  })
+
+  it('uses the subcategory current parent when a historical meal child moved into 餐饮', () => {
+    const oldRoot: Category = { ...categories[0]!, id: 'old-root', name: '生活' }
+    const movedHistoricalRow = {
+      ...baseTransaction, id: 'moved-in', categoryId: 'old-root', subcategoryId: 'breakfast',
+    }
+    const preview = previewDuplicateTransactions([movedHistoricalRow], [...categories, oldRoot], {
+      type: 'expense', amountMinor: 1200, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'breakfast',
+    })
+
+    expect(preview.mealDuplicateCount).toBe(1)
+    expect(preview.transactions.map((row) => row.id)).toEqual(['moved-in'])
+  })
+
+  it('stops treating a historical child as a meal after it moved out of 餐饮', () => {
+    const otherRoot: Category = { ...categories[0]!, id: 'other-root', name: '生活' }
+    const movedBreakfast: Category = { ...categories[1]!, id: 'moved-breakfast', parentId: 'other-root' }
+    const currentBreakfast: Category = { ...categories[1]!, id: 'current-breakfast', parentId: 'food' }
+    const historicalRow = {
+      ...baseTransaction, id: 'moved-out', categoryId: 'food', subcategoryId: 'moved-breakfast',
+    }
+    const preview = previewDuplicateTransactions(
+      [historicalRow],
+      [categories[0]!, movedBreakfast, currentBreakfast, otherRoot],
+      {
+        type: 'expense', amountMinor: 1200, occurredLocalDate: '2026-09-10',
+        categoryId: 'food', subcategoryId: 'current-breakfast',
+      },
+    )
+
+    expect(preview.mealDuplicateCount).toBe(0)
+    expect(preview.transactions).toEqual([])
+  })
+
   it('merges amount and meal candidates without duplicating the same row', () => {
     const sameMealAndAmount = { ...baseTransaction, id: 'both' }
     const sameAmountOnly = { ...baseTransaction, id: 'amount-only', categoryId: 'travel', subcategoryId: null }
@@ -110,7 +158,7 @@ describe('quick entry domain rules', () => {
 
     expect(preview.amountDuplicateCount).toBe(2)
     expect(preview.mealDuplicateCount).toBe(1)
-    expect(preview.transactions.map((row) => row.id).sort()).toEqual(['amount-only', 'both'])
+    expect(preview.transactions.map((row) => row.id)).toEqual(['amount-only', 'both'])
   })
 
   it('ignores deleted rows, other dates, income and breakfast under another root', () => {
@@ -138,6 +186,27 @@ describe('quick entry domain rules', () => {
     }, baseTransaction.id)
 
     expect(preview.transactions).toEqual([])
+  })
+
+  it('still warns when an edited meal conflicts with another same-meal row', () => {
+    const otherBreakfast = { ...baseTransaction, id: 'other-breakfast', amountMinor: 1300 }
+    const preview = previewDuplicateTransactions([baseTransaction, otherBreakfast], categories, {
+      type: 'expense', amountMinor: 1200, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'breakfast',
+    }, baseTransaction.id)
+
+    expect(preview.mealDuplicateCount).toBe(1)
+    expect(preview.transactions.map((row) => row.id)).toEqual(['other-breakfast'])
+  })
+
+  it('does not apply meal matching to an income draft even with meal category ids', () => {
+    const preview = previewDuplicateTransactions([baseTransaction], categories, {
+      type: 'income', amountMinor: 1200, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'breakfast',
+    })
+
+    expect(preview.mealSlot).toBeNull()
+    expect(preview.mealDuplicateCount).toBe(0)
   })
 
   it.each([
