@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import CategoryManager from './components/CategoryManager.vue'
 import LedgerPage from './components/LedgerPage.vue'
@@ -11,6 +11,7 @@ import SwipePager from './components/SwipePager.vue'
 import type { SaveCategoryInput, SaveItemCategoryInput, SaveItemCostInput, SaveItemInput } from './data/localRepository'
 import type { Category, Transaction } from './domain/models'
 import { formatMinor } from './domain/money'
+import type { DuplicatePreview } from './domain/quickEntry'
 import {
   exportEncryptedBackup,
   exportPlainJson,
@@ -35,13 +36,26 @@ const {
 const categoryManagerOpen = ref(false)
 const settingsOpen = ref(false)
 const statsReturnTransactionId = ref<string | null>(null)
-const duplicateCandidates = ref<Transaction[]>([])
+const duplicatePreview = ref<DuplicatePreview | null>(null)
+const duplicateCandidates = computed(() => duplicatePreview.value?.transactions ?? [])
+const duplicateSummary = computed(() => {
+  const preview = duplicatePreview.value
+  if (!preview) return ''
+  const reasons: string[] = []
+  if (preview.amountDuplicateCount > 0) {
+    reasons.push(`同一天、同金额的${draft.value.type === 'expense' ? '支出' : '收入'}已有 ${preview.amountDuplicateCount} 笔`)
+  }
+  if (preview.mealSlot && preview.mealDuplicateCount > 0) {
+    reasons.push(`当天已有${preview.mealSlot} ${preview.mealDuplicateCount} 笔`)
+  }
+  return `${reasons.join('；')}。`
+})
 const duplicateConfirming = ref(false)
 const duplicateCancelButton = ref<HTMLButtonElement | null>(null)
 const duplicateConfirmButton = ref<HTMLButtonElement | null>(null)
 const updateController = new PwaUpdateController()
 const updateState = updateController.state
-const appVersion = import.meta.env.VITE_APP_VERSION || '1.8.0'
+const appVersion = import.meta.env.VITE_APP_VERSION || '1.9.0'
 let dateRefreshTimer: number | null = null
 
 function localToday(): string {
@@ -86,11 +100,11 @@ onBeforeUnmount(() => {
 async function saveDraft(value: EntryDraft): Promise<void> {
   store.updateDraft(value)
   try {
-    const duplicates = store.previewDuplicateEntry()
-    if (duplicates.length > 0) {
+    const preview = store.previewDuplicateEntry()
+    if (preview.transactions.length > 0) {
       store.error = null
       store.clearToast()
-      duplicateCandidates.value = duplicates
+      duplicatePreview.value = preview
       await nextTick()
       duplicateCancelButton.value?.focus()
       return
@@ -155,7 +169,7 @@ function duplicateCategoryLabel(transaction: Transaction): string {
 
 async function cancelDuplicateSave(): Promise<void> {
   if (duplicateConfirming.value) return
-  duplicateCandidates.value = []
+  duplicatePreview.value = null
   await nextTick()
   document.querySelector<HTMLButtonElement>('[data-testid="save-entry"] .save-button')?.focus()
 }
@@ -165,7 +179,7 @@ async function confirmDuplicateSave(): Promise<void> {
   duplicateConfirming.value = true
   try {
     const returnedToStats = await saveCurrentEntry()
-    duplicateCandidates.value = []
+    duplicatePreview.value = null
     await nextTick()
     if (returnedToStats) document.getElementById('stats-title')?.focus()
     else document.querySelector<HTMLInputElement>('[data-testid="amount-input"]')?.focus()
@@ -479,7 +493,7 @@ function applyAvailableUpdate(): void {
               <span aria-hidden="true">≋</span>
               <div>
                 <h2 id="duplicate-entry-title">疑似重复账单</h2>
-                <p>同一天、同金额的{{ draft.type === 'expense' ? '支出' : '收入' }}已有 {{ duplicateCandidates.length }} 笔。</p>
+                <p>{{ duplicateSummary }}</p>
               </div>
             </div>
             <div class="duplicate-list">

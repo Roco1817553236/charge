@@ -5,6 +5,7 @@ import {
   findLatestBookkeepingTimestamp,
   formatLastBookkeepingTime,
   nextDraftDateAfterAdd,
+  previewDuplicateTransactions,
   suggestSubcategory,
 } from '../../src/domain/quickEntry'
 
@@ -71,6 +72,141 @@ describe('quick entry domain rules', () => {
     expect(findDuplicateTransactions(rows, {
       type: 'expense', amountMinor: 800, occurredLocalDate: '2026-09-10',
     }, 'tx-1').map((row) => row.id)).toEqual(['tx-2'])
+  })
+
+  it('finds a same-day breakfast duplicate even when the amount and time differ', () => {
+    const preview = previewDuplicateTransactions([baseTransaction], categories, {
+      type: 'expense', amountMinor: 1200, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'breakfast',
+    })
+
+    expect(preview.mealSlot).toBe('早餐')
+    expect(preview.mealDuplicateCount).toBe(1)
+    expect(preview.amountDuplicateCount).toBe(0)
+    expect(preview.transactions.map((row) => row.id)).toEqual(['tx-1'])
+  })
+
+  it.each(['午餐', '中餐'])('treats %s as the same meal slot as 正餐', (alias) => {
+    const aliasCategory: Category = {
+      ...categories[1]!, id: `alias-${alias}`, parentId: 'food', name: alias, sortOrder: 4,
+    }
+    const existingMainMeal = { ...baseTransaction, subcategoryId: 'main-meal' }
+    const preview = previewDuplicateTransactions([existingMainMeal], [...categories, aliasCategory], {
+      type: 'expense', amountMinor: 990, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: aliasCategory.id,
+    })
+
+    expect(preview.mealSlot).toBe('正餐')
+    expect(preview.mealDuplicateCount).toBe(1)
+  })
+
+  it('matches dinner duplicates and archived meal categories', () => {
+    const archivedDinner = categories.map((category) =>
+      category.id === 'dinner' ? { ...category, status: 'archived' as const } : category,
+    )
+    const dinnerRow = { ...baseTransaction, id: 'dinner-row', subcategoryId: 'dinner' }
+    const preview = previewDuplicateTransactions([dinnerRow], archivedDinner, {
+      type: 'expense', amountMinor: 2600, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'dinner',
+    })
+
+    expect(preview.mealSlot).toBe('晚餐')
+    expect(preview.transactions.map((row) => row.id)).toEqual(['dinner-row'])
+  })
+
+  it('uses the subcategory current parent when a historical meal child moved into 餐饮', () => {
+    const oldRoot: Category = { ...categories[0]!, id: 'old-root', name: '生活' }
+    const movedHistoricalRow = {
+      ...baseTransaction, id: 'moved-in', categoryId: 'old-root', subcategoryId: 'breakfast',
+    }
+    const preview = previewDuplicateTransactions([movedHistoricalRow], [...categories, oldRoot], {
+      type: 'expense', amountMinor: 1200, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'breakfast',
+    })
+
+    expect(preview.mealDuplicateCount).toBe(1)
+    expect(preview.transactions.map((row) => row.id)).toEqual(['moved-in'])
+  })
+
+  it('stops treating a historical child as a meal after it moved out of 餐饮', () => {
+    const otherRoot: Category = { ...categories[0]!, id: 'other-root', name: '生活' }
+    const movedBreakfast: Category = { ...categories[1]!, id: 'moved-breakfast', parentId: 'other-root' }
+    const currentBreakfast: Category = { ...categories[1]!, id: 'current-breakfast', parentId: 'food' }
+    const historicalRow = {
+      ...baseTransaction, id: 'moved-out', categoryId: 'food', subcategoryId: 'moved-breakfast',
+    }
+    const preview = previewDuplicateTransactions(
+      [historicalRow],
+      [categories[0]!, movedBreakfast, currentBreakfast, otherRoot],
+      {
+        type: 'expense', amountMinor: 1200, occurredLocalDate: '2026-09-10',
+        categoryId: 'food', subcategoryId: 'current-breakfast',
+      },
+    )
+
+    expect(preview.mealDuplicateCount).toBe(0)
+    expect(preview.transactions).toEqual([])
+  })
+
+  it('merges amount and meal candidates without duplicating the same row', () => {
+    const sameMealAndAmount = { ...baseTransaction, id: 'both' }
+    const sameAmountOnly = { ...baseTransaction, id: 'amount-only', categoryId: 'travel', subcategoryId: null }
+    const preview = previewDuplicateTransactions([sameMealAndAmount, sameAmountOnly], categories, {
+      type: 'expense', amountMinor: 800, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'breakfast',
+    })
+
+    expect(preview.amountDuplicateCount).toBe(2)
+    expect(preview.mealDuplicateCount).toBe(1)
+    expect(preview.transactions.map((row) => row.id)).toEqual(['amount-only', 'both'])
+  })
+
+  it('ignores deleted rows, other dates, income and breakfast under another root', () => {
+    const otherRoot: Category = { ...categories[0]!, id: 'other-root', name: '其他餐次' }
+    const otherBreakfast: Category = { ...categories[1]!, id: 'other-breakfast', parentId: 'other-root', name: '早餐' }
+    const rows: Transaction[] = [
+      { ...baseTransaction, id: 'deleted', deletedAt: '2026-09-11T00:00:00.000Z' },
+      { ...baseTransaction, id: 'other-date', occurredLocalDate: '2026-09-09' },
+      { ...baseTransaction, id: 'income', type: 'income' },
+      { ...baseTransaction, id: 'other-root', categoryId: 'other-root', subcategoryId: 'other-breakfast' },
+    ]
+    const preview = previewDuplicateTransactions(rows, [...categories, otherRoot, otherBreakfast], {
+      type: 'expense', amountMinor: 1200, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'breakfast',
+    })
+
+    expect(preview.transactions).toEqual([])
+    expect(preview.mealDuplicateCount).toBe(0)
+  })
+
+  it('excludes the edited row itself from meal duplicate matching', () => {
+    const preview = previewDuplicateTransactions([baseTransaction], categories, {
+      type: 'expense', amountMinor: 1200, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'breakfast',
+    }, baseTransaction.id)
+
+    expect(preview.transactions).toEqual([])
+  })
+
+  it('still warns when an edited meal conflicts with another same-meal row', () => {
+    const otherBreakfast = { ...baseTransaction, id: 'other-breakfast', amountMinor: 1300 }
+    const preview = previewDuplicateTransactions([baseTransaction, otherBreakfast], categories, {
+      type: 'expense', amountMinor: 1200, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'breakfast',
+    }, baseTransaction.id)
+
+    expect(preview.mealDuplicateCount).toBe(1)
+    expect(preview.transactions.map((row) => row.id)).toEqual(['other-breakfast'])
+  })
+
+  it('does not apply meal matching to an income draft even with meal category ids', () => {
+    const preview = previewDuplicateTransactions([baseTransaction], categories, {
+      type: 'income', amountMinor: 1200, occurredLocalDate: '2026-09-10',
+      categoryId: 'food', subcategoryId: 'breakfast',
+    })
+
+    expect(preview.mealSlot).toBeNull()
+    expect(preview.mealDuplicateCount).toBe(0)
   })
 
   it.each([

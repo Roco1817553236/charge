@@ -17,6 +17,9 @@ const category: Category = {
 const lunchCategory: Category = {
   ...category, id: 'lunch', parentId: 'food', name: '正餐', isPinned: false,
 }
+const breakfastCategory: Category = {
+  ...category, id: 'breakfast', parentId: 'food', name: '早餐', isPinned: false,
+}
 const existingTransaction: Transaction = {
   id: 'existing-tx', type: 'expense', amountMinor: 1880, currency: 'CNY', categoryId: 'food', subcategoryId: null,
   occurredLocalDate: '2026-08-14', occurredLocalTime: '08:10', timeZone: 'Asia/Shanghai', note: '已有早餐',
@@ -177,7 +180,7 @@ describe('App', () => {
   it('does not replace a stats edit with another ledger edit while its save is pending', async () => {
     let resolveUpdate!: (transaction: Transaction) => void
     const updatePending = new Promise<Transaction>((resolve) => { resolveUpdate = resolve })
-    const other = { ...statsTransaction, id: 'other-edit', amountMinor: 990, note: '不应覆盖的新编辑' }
+    const other = { ...statsTransaction, id: 'other-edit', amountMinor: 990, subcategoryId: null, note: '不应覆盖的新编辑' }
     const repo = repository()
     vi.mocked(repo.listCategories).mockResolvedValue([category, lunchCategory])
     vi.mocked(repo.listTransactions).mockResolvedValue([statsTransaction, other])
@@ -236,6 +239,59 @@ describe('App', () => {
 
     expect(repo.addTransaction).toHaveBeenCalledTimes(1)
     expect(wrapper.find('[data-testid="duplicate-entry-dialog"]').exists()).toBe(false)
+  })
+
+  it('warns about a same-day breakfast with a different amount and still allows confirmation', async () => {
+    const breakfastRow = {
+      ...existingTransaction, id: 'first-breakfast', amountMinor: 500,
+      subcategoryId: 'breakfast', note: '第一份早餐',
+    }
+    const repo = repository()
+    vi.mocked(repo.listCategories).mockResolvedValue([category, breakfastCategory])
+    vi.mocked(repo.listTransactions).mockResolvedValue([breakfastRow])
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="amount-input"]').setValue('12.00')
+    await wrapper.get('[data-testid="category-food"]').trigger('click')
+    await wrapper.get('input[aria-label="日期"]').setValue('2026-08-14')
+    await wrapper.get('[data-testid="save-entry"]').trigger('submit')
+    await flushPromises()
+
+    const dialog = wrapper.get('[data-testid="duplicate-entry-dialog"]')
+    expect(dialog.text()).toContain('当天已有早餐 1 笔')
+    expect(dialog.text()).toContain('第一份早餐')
+    expect(dialog.text()).not.toContain('同一天、同金额')
+    expect(repo.addTransaction).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="duplicate-entry-confirm"]').trigger('click')
+    await flushPromises()
+    expect(repo.addTransaction).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows both reasons when one row matches amount and meal duplication', async () => {
+    const breakfastRow = {
+      ...existingTransaction, id: 'same-breakfast', amountMinor: 1200,
+      subcategoryId: 'breakfast', note: '相同金额早餐',
+    }
+    const repo = repository()
+    vi.mocked(repo.listCategories).mockResolvedValue([category, breakfastCategory])
+    vi.mocked(repo.listTransactions).mockResolvedValue([breakfastRow])
+    setBookRepository(repo)
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="amount-input"]').setValue('12.00')
+    await wrapper.get('[data-testid="category-food"]').trigger('click')
+    await wrapper.get('input[aria-label="日期"]').setValue('2026-08-14')
+    await wrapper.get('[data-testid="save-entry"]').trigger('submit')
+    await flushPromises()
+
+    const dialog = wrapper.get('[data-testid="duplicate-entry-dialog"]')
+    expect(dialog.text()).toContain('同一天、同金额')
+    expect(dialog.text()).toContain('当天已有早餐 1 笔')
+    expect(dialog.findAll('.duplicate-list article')).toHaveLength(1)
   })
 
   it('keeps a failed duplicate confirmation open and displays the save error inside it', async () => {

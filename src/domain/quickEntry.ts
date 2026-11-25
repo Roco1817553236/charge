@@ -6,6 +6,20 @@ export interface DuplicateTransactionKey {
   occurredLocalDate: string
 }
 
+export interface DuplicateEntryKey extends DuplicateTransactionKey {
+  categoryId: string
+  subcategoryId: string | null
+}
+
+export type MealSlot = '早餐' | '正餐' | '晚餐'
+
+export interface DuplicatePreview {
+  transactions: Transaction[]
+  amountDuplicateCount: number
+  mealSlot: MealSlot | null
+  mealDuplicateCount: number
+}
+
 export function findLatestBookkeepingTimestamp(transactions: Transaction[]): string | null {
   let latest: { value: string; time: number } | null = null
   for (const transaction of transactions) {
@@ -58,6 +72,65 @@ export function findDuplicateTransactions(
         `${left.occurredLocalDate}T${left.occurredLocalTime}`,
       ),
     )
+}
+
+function resolveMealSlot(
+  categories: Category[],
+  type: TransactionType,
+  _categoryId: string,
+  subcategoryId: string | null,
+): MealSlot | null {
+  if (type !== 'expense' || !subcategoryId) return null
+  const child = categories.find((category) =>
+    !category.deletedAt && category.id === subcategoryId && category.parentId !== null && category.type === 'expense',
+  )
+  if (!child) return null
+  const root = categories.find((category) =>
+    !category.deletedAt && category.id === child.parentId && category.parentId === null && category.type === 'expense',
+  )
+  if (root?.name !== '餐饮') return null
+  if (child.name === '早餐') return '早餐'
+  if (child.name === '晚餐') return '晚餐'
+  if (child.name === '正餐' || child.name === '午餐' || child.name === '中餐') return '正餐'
+  return null
+}
+
+export function previewDuplicateTransactions(
+  transactions: Transaction[],
+  categories: Category[],
+  key: DuplicateEntryKey,
+  excludedId?: string | null,
+): DuplicatePreview {
+  const amountDuplicates = findDuplicateTransactions(transactions, key, excludedId)
+  const mealSlot = resolveMealSlot(categories, key.type, key.categoryId, key.subcategoryId)
+  const mealDuplicates = mealSlot
+    ? transactions.filter((transaction) =>
+        !transaction.deletedAt &&
+        transaction.id !== excludedId &&
+        transaction.type === 'expense' &&
+        transaction.occurredLocalDate === key.occurredLocalDate &&
+        resolveMealSlot(
+          categories,
+          transaction.type,
+          transaction.categoryId,
+          transaction.subcategoryId,
+        ) === mealSlot,
+      )
+    : []
+  const merged = new Map<string, Transaction>()
+  for (const transaction of [...amountDuplicates, ...mealDuplicates]) merged.set(transaction.id, transaction)
+  const mergedTransactions = [...merged.values()].sort((left, right) => {
+    const newestFirst = `${right.occurredLocalDate}T${right.occurredLocalTime}`.localeCompare(
+      `${left.occurredLocalDate}T${left.occurredLocalTime}`,
+    )
+    return newestFirst || left.id.localeCompare(right.id)
+  })
+  return {
+    transactions: mergedTransactions,
+    amountDuplicateCount: amountDuplicates.length,
+    mealSlot,
+    mealDuplicateCount: mealDuplicates.length,
+  }
 }
 
 function nextLocalCalendarDate(value: string): string {

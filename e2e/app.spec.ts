@@ -7,9 +7,10 @@ test('keeps a chosen date for two additions and advances after the third or late
   await expect(date).toBeVisible()
   await date.fill('2026-10-01')
 
-  const addExpense = async (amount: string) => {
+  const addExpense = async (amount: string, subcategory?: string) => {
     await page.getByTestId('amount-input').fill(amount)
     await page.getByRole('button', { name: /餐饮/ }).click()
+    if (subcategory) await page.getByRole('button', { name: subcategory, exact: true }).click()
     await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
     await expect(page.getByText('本机已保存，可继续记账')).toBeVisible()
     await page.getByRole('button', { name: '关闭提示' }).click()
@@ -17,14 +18,57 @@ test('keeps a chosen date for two additions and advances after the third or late
 
   await addExpense('1.00')
   await expect(date).toHaveValue('2026-10-01')
-  await addExpense('2.00')
+  await addExpense('10.00')
   await expect(date).toHaveValue('2026-10-01')
-  await addExpense('3.00')
+  await addExpense('20.00')
   await expect(date).toHaveValue('2026-10-02')
 
   await date.fill('2026-10-01')
-  await addExpense('4.00')
+  await addExpense('4.00', '零食饮料')
   await expect(date).toHaveValue('2026-10-02')
+})
+
+test('warns about a repeated meal on the same day even when the amount differs', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 })
+  await page.goto('/')
+  const date = page.getByLabel('日期')
+  await date.fill('2026-11-01')
+
+  await page.getByTestId('amount-input').fill('5.00')
+  await page.getByRole('button', { name: /餐饮/ }).click()
+  await page.getByLabel('备注').fill('第一份早餐')
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+  await expect(page.getByText('本机已保存，可继续记账')).toBeVisible()
+  await page.getByRole('button', { name: '关闭提示' }).click()
+
+  await page.getByTestId('amount-input').fill('10.00')
+  await page.getByRole('button', { name: /餐饮/ }).click()
+  await page.getByLabel('备注').fill('当天晚餐')
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+  await expect(page.getByText('本机已保存，可继续记账')).toBeVisible()
+  await page.getByRole('button', { name: '关闭提示' }).click()
+  await expect(date).toHaveValue('2026-11-01')
+
+  await page.getByTestId('amount-input').fill('12.00')
+  await page.getByRole('button', { name: /餐饮/ }).click()
+  await page.getByRole('button', { name: '早餐', exact: true }).click()
+  await page.getByLabel('备注').fill('第二份早餐')
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+
+  const dialog = page.getByTestId('duplicate-entry-dialog')
+  await expect(dialog).toContainText('当天已有早餐 1 笔')
+  await expect(dialog).not.toContainText('同一天、同金额')
+  await expect(date).toHaveValue('2026-11-01')
+  await dialog.getByRole('button', { name: '返回检查' }).click()
+  await expect(page.getByLabel('备注')).toHaveValue('第二份早餐')
+  await expect(date).toHaveValue('2026-11-01')
+
+  await page.getByTestId('save-entry').getByRole('button', { name: '保存支出' }).click()
+  await page.getByTestId('duplicate-entry-confirm').click()
+  await expect(dialog).toHaveCount(0)
+  await expect(date).toHaveValue('2026-11-02')
+  await page.getByTestId('nav-ledger').click()
+  await expect(page.locator('.transaction-row')).toHaveCount(3)
 })
 
 test('shows latest activity, suggests subcategories, and confirms possible duplicates', async ({ page }) => {

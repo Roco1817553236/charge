@@ -9,7 +9,12 @@ import type {
   TransactionType,
 } from '../domain/models'
 import { parseAmountToMinor } from '../domain/money'
-import { findDuplicateTransactions, findLatestBookkeepingTimestamp, nextDraftDateAfterAdd } from '../domain/quickEntry'
+import {
+  findLatestBookkeepingTimestamp,
+  nextDraftDateAfterAdd,
+  previewDuplicateTransactions,
+  type DuplicatePreview,
+} from '../domain/quickEntry'
 
 export interface EntryDraft {
   type: TransactionType
@@ -190,18 +195,20 @@ export const useBookStore = defineStore('book', {
       this.persistEntryState()
     },
 
-    previewDuplicateEntry(draft?: EntryDraft): Transaction[] {
+    previewDuplicateEntry(draft?: EntryDraft): DuplicatePreview {
       const candidate = draft ?? this.draft
       let amountMinor: number
       try {
         amountMinor = parseAmountToMinor(candidate.amount)
       } catch {
-        return []
+        return { transactions: [], amountDuplicateCount: 0, mealSlot: null, mealDuplicateCount: 0 }
       }
-      return findDuplicateTransactions(this.transactions, {
+      return previewDuplicateTransactions(this.transactions, this.categories, {
         type: candidate.type,
         amountMinor,
         occurredLocalDate: candidate.date,
+        categoryId: candidate.categoryId ?? '',
+        subcategoryId: candidate.subcategoryId,
       }, this.editingTransactionId)
     },
 
