@@ -99,9 +99,9 @@ function onImport(event: Event): void {
       <details class="change-log">
         <summary>v{{ appVersion }} 更新内容</summary>
         <ul>
-          <li>日期、时间和备注进入记账页后默认展开</li>
-          <li>同一日期新增到第 3 笔后，下一张草稿自动进入次日</li>
-          <li>手动返回已有多笔的旧日期，新增后仍按账本实际数量判断</li>
+          <li>同一天重复记录早餐、正餐或晚餐时会在保存前提醒</li>
+          <li>午餐、中餐和正餐视为同一个餐次</li>
+          <li>餐次与同金额重复共用确认弹窗，确认后仍可保存</li>
         </ul>
       </details>
     </section>

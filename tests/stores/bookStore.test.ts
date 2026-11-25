@@ -209,10 +209,34 @@ describe('book store', () => {
       date: '2026-08-14', time: '22:45', note: '另一笔',
     })
 
-    expect(store.previewDuplicateEntry().map((row) => row.id)).toEqual([saved.id])
+    expect(store.previewDuplicateEntry()).toMatchObject({
+      amountDuplicateCount: 1, mealSlot: null, mealDuplicateCount: 0,
+    })
+    expect(store.previewDuplicateEntry().transactions.map((row) => row.id)).toEqual([saved.id])
 
     store.beginEdit(saved)
-    expect(store.previewDuplicateEntry()).toEqual([])
+    expect(store.previewDuplicateEntry().transactions).toEqual([])
+  })
+
+  it('previews a same-day meal duplicate with a different amount', async () => {
+    const repository = fakeRepository()
+    const breakfast = { ...category, id: 'breakfast', parentId: 'food', name: '早餐', isPinned: false }
+    const breakfastRow = { ...saved, id: 'breakfast-row', amountMinor: 500, subcategoryId: 'breakfast' }
+    vi.mocked(repository.listCategories).mockResolvedValue([category, breakfast])
+    vi.mocked(repository.listTransactions).mockResolvedValue([breakfastRow])
+    setBookRepository(repository)
+    const store = useBookStore()
+    await store.initialize()
+    store.updateDraft({
+      type: 'expense', amount: '12.00', categoryId: 'food', subcategoryId: 'breakfast',
+      date: '2026-08-14', time: '22:45', note: '第二份早餐',
+    })
+
+    const preview = store.previewDuplicateEntry()
+    expect(preview.mealSlot).toBe('早餐')
+    expect(preview.mealDuplicateCount).toBe(1)
+    expect(preview.amountDuplicateCount).toBe(0)
+    expect(preview.transactions.map((row) => row.id)).toEqual(['breakfast-row'])
   })
 
   it('skips duplicate preview for an invalid amount so normal save validation can report it', async () => {
@@ -222,7 +246,9 @@ describe('book store', () => {
     await store.initialize()
     store.updateDraft({ ...store.draft, amount: 'not-money', categoryId: 'food' })
 
-    expect(store.previewDuplicateEntry()).toEqual([])
+    expect(store.previewDuplicateEntry()).toMatchObject({
+      transactions: [], amountDuplicateCount: 0, mealSlot: null, mealDuplicateCount: 0,
+    })
   })
 
   it('restores an editing draft identity after reload and updates instead of duplicating', async () => {
